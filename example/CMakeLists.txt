@@ -8,7 +8,7 @@ add_executable(testserver ${EXAMPLE_SRCS})
 target_link_libraries(testserver muduo_core ${LIBS})
 
 # 设置编译选项
-target_compile_options(testserver PRIVATE -std=c++11 -Wall)
+target_compile_options(testserver PRIVATE -std=c++11 -Wall -g)
 
 # 设置 testserver 可执行文件输出目录
 set_target_properties(testserver PROPERTIES
