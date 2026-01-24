@@ -5,8 +5,8 @@
 #include "Logger.h"
 
 const int Channel::kNoneEvent = 0; //空事件
-const int Channel::kReadEvent = EPOLLIN | EPOLLPRI; //读事件
-const int Channel::kWriteEvent = EPOLLOUT; //写事件
+const int Channel::kReadEvent = EPOLLIN | EPOLLPRI; //读事件 // EPOLLIN是: 只有数据到达时才触发
+const int Channel::kWriteEvent = EPOLLOUT; //写事件 // EPOLLOUT是: 只要发送缓冲区有空间就触发!!!
 
 // EventLoop: ChannelList Poller
 Channel::Channel(EventLoop *loop, int fd)

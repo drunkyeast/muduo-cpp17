@@ -52,8 +52,8 @@ private:
 };
 
 int main() {
-    EventLoop loop;
-    InetAddress addr(8080);
+    EventLoop loop; //这个EventLoop就是main EventLoop，即负责循环事件监听处理新用户连接事件的事件循环器。
+    InetAddress addr(8080); //InetAddress其实是对socket编程中的sockaddr_in进行封装，使其变为更友好简单的接口而已。
     EchoServer server(&loop, addr, "EchoServer");
     server.start();
     loop.loop();

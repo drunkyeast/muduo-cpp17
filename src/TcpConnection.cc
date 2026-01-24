@@ -174,7 +174,7 @@ void TcpConnection::connectDestroyed()
     {
         setState(kDisconnected);
         channel_->disableAll(); // 把channel的所有感兴趣的事件从poller中删除掉
-        connectionCallback_(shared_from_this());
+        connectionCallback_(shared_from_this()); // 这儿调用用户注册的回调函数?
     }
     channel_->remove(); // 把channel从poller中删除掉
 }
@@ -243,7 +243,7 @@ void TcpConnection::handleClose()
     channel_->disableAll();
 
     TcpConnectionPtr connPtr(shared_from_this());
-    connectionCallback_(connPtr); // 连接回调
+    connectionCallback_(connPtr); // 连接回调 // 这注释写的啥玩意儿啊. 不如别人原本的好: 调用用户自定义的连接事件处理函数, 可以有可无.
     closeCallback_(connPtr);      // 执行关闭连接的回调 执行的是TcpServer::removeConnection回调方法   // must be the last line
 }
 

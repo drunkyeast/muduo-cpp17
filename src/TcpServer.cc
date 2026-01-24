@@ -41,7 +41,12 @@ TcpServer::~TcpServer()
         item.second.reset();    // 把原始的智能指针复位 让栈空间的TcpConnectionPtr conn指向该对象 当conn出了其作用域 即可释放智能指针指向的对象
         // 销毁连接
         conn->getLoop()->runInLoop(
-            std::bind(&TcpConnection::connectDestroyed, conn));
+            std::bind(&TcpConnection::connectDestroyed, conn)); // 这个bind会拷贝conn参数, 导致引用计数+1.
+        // 要想彻底删除一个TcpConnection对象，就必须要调用这个对象的connecDestroyed()方法
+        // 因为引用计数归0会触发~TcpConnection, 这个析构就无所谓再主线程还是工作线程了.
+
+        // bind会内部会拷贝一个conn, 有点类似thread传参机制.
+        // bind可以用lambda代替, 但不能是引用捕获. 如果是引用捕获, 后续runInLoop拷贝整个lambda表达式, 对里面的conn也会用引用拷贝, 而不是值拷贝.
     }
 }
 
@@ -58,7 +63,7 @@ void TcpServer::start()
     if (started_.fetch_add(1) == 0)    // 防止一个TcpServer对象被start多次
     {
         threadPool_->start(threadInitCallback_);    // 启动底层的loop线程池
-        loop_->runInLoop(std::bind(&Acceptor::listen, acceptor_.get()));
+        loop_->runInLoop(std::bind(&Acceptor::listen, acceptor_.get())); //让这个EventLoop，也就是mainloop来执行Acceptor的listen函数，开启服务端监听
     }
 }
 

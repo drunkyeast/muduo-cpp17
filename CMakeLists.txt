@@ -1,12 +1,14 @@
 #设置最低版本和项目名称
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.10) # 我修改成了3.10
 project(muduo-core) #锁定项目的工作目录
 
 #设置全局的c++标准
 set (CMAKE_CXX_STANDARD 11) 
 set (CMAKE_CXX_STANDARD_REQUIRED True)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # 我添加的, 让cmake生成compile_commands.json文件
 set(CMAKE_BUILD_TYPE Debug) # 我添加的, 让cmake生成debug模式, 可用于调试.
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -fno-inline") # 我添加的, debug默认只有-g(其他IDE可能是默认-g -O0), 没有-O0和-fno-inline更加保险.
 
 #链接必要的库，比如刚刚我们写好的在src文件Cmakelists中muduo-core_lib静态库，还有全局链接库
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)

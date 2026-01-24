@@ -14,7 +14,7 @@ class Channel;
 class Poller;
 
 // 事件循环类 主要包含了两个大模块 Channel Poller(epoll的抽象)
-class EventLoop : noncopyable
+class EventLoop : noncopyable // 禁止派生类的拷贝操作.
 {
 public:
     using Functor = std::function<void()>;
@@ -44,6 +44,7 @@ public:
 
     // 判断EventLoop对象是否在自己的线程里
     bool isInLoopThread() const { return threadId_ == CurrentThread::tid(); } // threadId_为EventLoop创建时的线程id CurrentThread::tid()为当前线程id
+    // threadId_是loop对象的成员变量, CurrentThread是当前CPU运行的线程.
 
 private:
     void handleRead();        // 给eventfd返回的文件描述符wakeupFd_绑定的事件回调 当wakeup()时 即有事件发生时 调用handleRead()读wakeupFd_的8字节 同时唤醒阻塞的epoll_wait

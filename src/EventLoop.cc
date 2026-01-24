@@ -12,6 +12,26 @@
 // 防止一个线程创建多个EventLoop
 __thread EventLoop *t_loopInThisThread = nullptr;
 
+/* 补充, eventfd与进程间通信的区别
+进程间通信 (IPC)
+├─ 管道 (pipe/FIFO)
+├─ 消息队列 (message queue)
+├─ 共享内存 (shared memory)
+├─ 信号 (signal)
+└─ Socket
+
+线程间同步
+├─ 互斥锁 (mutex)
+├─ 条件变量 (condition variable)
+├─ 读写锁 (rwlock)
+├─ 自旋锁 (spinlock)
+└─ 原子操作 (atomic)
+
+两者都可以
+├─ eventfd ⭐
+├─ 信号量 (semaphore)
+└─ 文件锁 (file lock)
+*/
 // 定义默认的Poller IO复用接口的超时时间
 const int kPollTimeMs = 10000; // 10000毫秒 = 10秒钟
 
@@ -122,7 +142,8 @@ void EventLoop::quit()
     }
 }
 
-// 在当前loop中执行cb
+// 在当前loop中执行cb, 这注释写的有点垃圾. 什么叫当前loop, 当前线程, 还得靠自己去梳理.
+// mainloop/~TcpServer中执行: conn->getLoop()->runInLoop(...), conn是一个TcpConnection(对应一个socket/channel)
 void EventLoop::runInLoop(Functor cb)
 {
     if (isInLoopThread()) // 当前EventLoop中执行回调
@@ -140,13 +161,15 @@ void EventLoop::queueInLoop(Functor cb)
 {
     {
         std::unique_lock<std::mutex> lock(mutex_);
-        pendingFunctors_.emplace_back(cb);
+        pendingFunctors_.emplace_back(cb); // 这个pendingFunctors也是当前loop的成员变量.
     }
 
     /**
      * || callingPendingFunctors的意思是 当前loop正在执行回调中 但是loop的pendingFunctors_中又加入了新的回调 需要通过wakeup写事件
      * 唤醒相应的需要执行上面回调操作的loop的线程 让loop()下一次poller_->poll()不再阻塞（阻塞的话会延迟前一次新加入的回调的执行），然后
      * 继续执行pendingFunctors_中的回调函数
+     上面这个卡码笔记的注释写的什么垃圾啊.
+     cb需要loop所对应的线程来执行, 但那个线程可能在epoll_wait阻塞了, 所以需要唤醒那个线程. 而当前执行这个函数的线程应该是mainloop对应的线程.
      **/
     if (!isInLoopThread() || callingPendingFunctors_)
     {
