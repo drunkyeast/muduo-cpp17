@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.10) # 我修改成了3.10
 project(muduo-core) #锁定项目的工作目录
 
 #设置全局的c++标准
-set (CMAKE_CXX_STANDARD 11) 
+set (CMAKE_CXX_STANDARD 17) 
 set (CMAKE_CXX_STANDARD_REQUIRED True)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # 我添加的, 让cmake生成compile_commands.json文件
