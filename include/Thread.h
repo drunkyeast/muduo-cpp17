@@ -2,7 +2,6 @@
 
 #include <functional>
 #include <thread>
-#include <memory>
 #include <unistd.h>
 #include <string>
 #include <atomic>
@@ -14,7 +13,7 @@ class Thread : noncopyable
 public:
     using ThreadFunc = std::function<void()>;
 
-    explicit Thread(ThreadFunc, const std::string &name = std::string());
+    explicit Thread(ThreadFunc, const std::string& name = {});
     ~Thread();
 
     void start();
@@ -27,13 +26,12 @@ public:
     static int numCreated() { return numCreated_; }
 
 private:
-    void setDefaultName();
-
     bool started_;
     bool joined_;
-    std::shared_ptr<std::thread> thread_;
+    // std::shared_ptr<std::thread> thread_;
+    std::thread thread_; // 默认构造为空, 不持有线程, 不用写成智能指针, 且调用Thread的地方也没有用到共享.
     pid_t tid_;       // 在线程创建时再绑定
     ThreadFunc func_; // 线程回调函数
     std::string name_;
-    static std::atomic_int numCreated_;
+    inline static std::atomic_int numCreated_{0};
 };

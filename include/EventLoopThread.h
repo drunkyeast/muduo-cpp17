@@ -15,8 +15,11 @@ class EventLoopThread : noncopyable
 public:
     using ThreadInitCallback = std::function<void(EventLoop *)>;
 
-    EventLoopThread(const ThreadInitCallback &cb = ThreadInitCallback(),
-                    const std::string &name = std::string());
+    // C++11 起就可以用 = {} 代替显式构造临时对象，更简洁：
+    // EventLoopThread(const ThreadInitCallback &cb = ThreadInitCallback(),
+    //                 const std::string &name = std::string());
+    EventLoopThread(ThreadInitCallback cb = {},
+                    const std::string &name = {});
     ~EventLoopThread();
 
     EventLoop *startLoop();
@@ -24,8 +27,7 @@ public:
 private:
     void threadFunc();
 
-    EventLoop *loop_;
-    bool exiting_;
+    EventLoop* loop_;
     Thread thread_;
     std::mutex mutex_;             // 互斥锁
     std::condition_variable cond_; // 条件变量

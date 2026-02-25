@@ -2,3 +2,4 @@ AAA
 build
 .cache
 lib
+example/testserver
