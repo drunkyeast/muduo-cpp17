@@ -1,12 +1,8 @@
-#include <sys/epoll.h>
+// #include <sys/epoll.h>
 
 #include "Channel.h"
 #include "EventLoop.h"
 #include "Logger.h"
-
-const int Channel::kNoneEvent = 0; //空事件
-const int Channel::kReadEvent = EPOLLIN | EPOLLPRI; //读事件 // EPOLLIN是: 只有数据到达时才触发
-const int Channel::kWriteEvent = EPOLLOUT; //写事件 // EPOLLOUT是: 只要发送缓冲区有空间就触发!!!
 
 // EventLoop: ChannelList Poller
 Channel::Channel(EventLoop *loop, int fd)
@@ -21,6 +17,7 @@ Channel::Channel(EventLoop *loop, int fd)
 
 Channel::~Channel()
 {
+    // 原本muduo作者在这是写了一些asset断言的, 用于debug. 直接删掉. realease版本会直接抹除assert.
 }
 
 // channel的tie方法什么时候调用过?  TcpConnection => channel
@@ -68,8 +65,10 @@ void Channel::handleEvent(Timestamp receiveTime)
     }
 }
 
+// 根据poller通知的channel发生的具体事件, 由channel负责调用具体的回调操作  调试还可以用__FILE__, __LINE__, __func__
 void Channel::handleEventWithGuard(Timestamp receiveTime)
 {
+    LOG_INFO("[%s:%d]%s\n", __FILE__, __LINE__, __func__);
     LOG_INFO("channel handleEvent revents:%d\n", revents_);
     // 关闭
     if ((revents_ & EPOLLHUP) && !(revents_ & EPOLLIN)) // 当TcpConnection对应Channel 通过shutdown 关闭写端 epoll触发EPOLLHUP

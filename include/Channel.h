@@ -1,15 +1,16 @@
 #pragma once
 
+#include <sys/epoll.h>
 #include <functional>
 #include <memory>
 
 #include "noncopyable.h"
 #include "Timestamp.h"
 
-class EventLoop;
+class EventLoop; // 前置声明, 这儿没必要包含它的头文件.
 
 /**
- * 理清楚 EventLoop、Channel、Poller之间的关系  Reactor模型上对应多路事件分发器
+ * 理清楚 EventLoop、Channel、Poller之间的关系  他们在Reactor模型上对应多路事件分发器(Demultiplex)
  * Channel理解为通道 封装了sockfd和其感兴趣的event 如EPOLLIN、EPOLLOUT事件 还绑定了poller返回的具体事件
  **/
 class Channel : noncopyable
@@ -35,45 +36,49 @@ public:
 
     int fd() const { return fd_; }
     int events() const { return events_; }
-    void set_revents(int revt) { revents_ = revt; }
+    void set_revents(int revt) { revents_ = revt; } // poller调用这个来设置啊
 
     // 设置fd相应的事件状态 相当于epoll_ctl add delete
-    void enableReading() { events_ |= kReadEvent; update(); }
+    void enableReading() { events_ |= kReadEvent; update(); } // 也是poller修改, 相当于调用epoll_ctl
     void disableReading() { events_ &= ~kReadEvent; update(); }
     void enableWriting() { events_ |= kWriteEvent; update(); }
     void disableWriting() { events_ &= ~kWriteEvent; update(); }
     void disableAll() { events_ = kNoneEvent; update(); }
 
-    // 返回fd当前的事件状态
+    // 返回fd当前的事件状态, isWriting和isReading的位运算就不去纠结了, 不好理解.
     bool isNoneEvent() const { return events_ == kNoneEvent; }
     bool isWriting() const { return events_ & kWriteEvent; }
     bool isReading() const { return events_ & kReadEvent; }
 
-    int index() { return index_; }
+    int index() const { return index_; }
     void set_index(int idx) { index_ = idx; }
 
     // one loop per thread
     EventLoop *ownerLoop() { return loop_; }
-    void remove();
+    void remove(); // 删除channel
 private:
 
     void update();
-    void handleEventWithGuard(Timestamp receiveTime);
+    void handleEventWithGuard(Timestamp receiveTime); // 就是handleEvent的一部分, 底层
 
-    static const int kNoneEvent;
-    static const int kReadEvent;
-    static const int kWriteEvent;
+    // static const int x = 0;早在C++98就可以. 但这个特例只针对 int、char 这种整型. 
+    // 我改成inline更通用, 1. int换成string也可以  2. const去掉也可以. 更通用. 
+    // constexpr能自带inline, 但不能作用于string. 所以我下面这写法是更通用的.
+    // inline static const std::string t1 = "hello"; // 这是一个例子
+    inline static const int kNoneEvent = 0; //空事件
+    inline static const int kReadEvent = EPOLLIN | EPOLLPRI; //读事件 // EPOLLIN是: 只有数据到达时才触发 // 0x00000011
+    inline static const int kWriteEvent  = EPOLLOUT; //写事件 // EPOLLOUT是: 只要发送缓冲区有空间就触发!!! // 0x00000100
 
     EventLoop *loop_; // 事件循环
     const int fd_;    // fd，Poller监听的对象
     int events_;      // 注册fd感兴趣的事件
     int revents_;     // Poller返回的具体发生的事件
-    int index_;
+    int index_;       // used by poller
 
-    std::weak_ptr<void> tie_;
+    std::weak_ptr<void> tie_; // 防止手动remove channel后, 还使用channel. void泛型持有.
     bool tied_;
 
-    // 因为channel通道里可获知fd最终发生的具体的事件events，所以它负责调用具体事件的回调操作
+    // 因为channel通道里可获知fd最终发生的具体的事件revents，所以它负责调用具体事件的回调操作.
     ReadEventCallback readCallback_;
     EventCallback writeCallback_;
     EventCallback closeCallback_;

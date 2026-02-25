@@ -23,11 +23,13 @@ public:
 
     // 重写基类Poller的抽象方法
     Timestamp poll(int timeoutMs, ChannelList *activeChannels) override;
-    void updateChannel(Channel *channel) override;
-    void removeChannel(Channel *channel) override;
+    void updateChannel(Channel *channel) override; // epoll_ctl(epollfd_, EPOLL_CTL_ADD, fd, &event)
+    void removeChannel(Channel *channel) override; // epoll_ctl(epollfd_, EPOLL_CTL_DEL, fd, &event)
 
 private:
-    static const int kInitEventListSize = 16;
+    // static const int kInitEventListSize = 16;     // 对于int, 这些写法都行.
+    // static constexpr int kInitEventListSize = 16; // 对于int, 这些写法都行.
+    inline static const int kInitEventListSize = 16; // 对于int, 这些写法都行.
 
     // 填写活跃的连接
     void fillActiveChannels(int numEvents, ChannelList *activeChannels) const;

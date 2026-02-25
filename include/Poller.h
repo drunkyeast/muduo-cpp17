@@ -5,17 +5,18 @@
 
 #include "noncopyable.h"
 #include "Timestamp.h"
+#include "Channel.h"
 
 class Channel;
 class EventLoop;
 
-// muduo库中多路事件分发器的核心IO复用模块
-class Poller
+// muduo库中多路事件分发器demultiplex的核心IO复用模块
+class Poller : noncopyable
 {
 public:
     using ChannelList = std::vector<Channel *>;
 
-    Poller(EventLoop *loop);
+    Poller(EventLoop *loop): ownerLoop_(loop) {}
     virtual ~Poller() = default;
 
     // 给所有IO复用保留统一的接口
@@ -24,7 +25,10 @@ public:
     virtual void removeChannel(Channel *channel) = 0;
 
     // 判断参数channel是否在当前的Poller当中
-    bool hasChannel(Channel *channel) const;
+    bool hasChannel(Channel *channel) const {
+        auto it = channels_.find(channel->fd());
+        return it != channels_.end() && it->second == channel;
+    }
 
     // EventLoop可以通过该接口获取默认的IO复用的具体实现
     static Poller *newDefaultPoller(EventLoop *loop);

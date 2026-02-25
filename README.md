@@ -1,4 +1,7 @@
 # 简历相关
+## 2月底mark一下后续优化点.
+cb传递, 直接拷贝传递, 还是move后传递.... 在Channel/EpollPoller/EventLoop三个模块中.
+
 ## 面试时怎么讲呢?
 写一个3分钟项目介绍稿. 梳理流程. 博客已经讲得很清楚了. (你要自己写啊)
 深入讲几个技术点, 例如one loop per thread, Reactor架构等等.

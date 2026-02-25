@@ -6,9 +6,13 @@
 #include "Logger.h"
 #include "Channel.h"
 
-const int kNew = -1;    // 某个channel还没添加至Poller          // channel的成员index_初始化为-1
-const int kAdded = 1;   // 某个channel已经添加至Poller
-const int kDeleted = 2; // 某个channel已经从Poller删除
+// 某个channel的状态
+namespace  { // 匿名 namespace 赋予内部链接
+    constexpr int kNew = -1;    // 某个channel还没添加至Poller          // channel的成员index_初始化为-1
+    constexpr int kAdded = 1;   // 某个channel已经添加至Poller
+    constexpr int kDeleted = 2; // 某个channel已经从Poller删除
+}
+
 
 EPollPoller::EPollPoller(EventLoop *loop)
     : Poller(loop)
@@ -29,39 +33,6 @@ EPollPoller::~EPollPoller()
     ::close(epollfd_);
 }
 
-Timestamp EPollPoller::poll(int timeoutMs, ChannelList *activeChannels)
-{
-    // 由于频繁调用poll 实际上应该用LOG_DEBUG输出日志更为合理 当遇到并发场景 关闭DEBUG日志提升效率
-    LOG_INFO("func=%s => fd total count:%lu\n", __FUNCTION__, channels_.size());
-
-    int numEvents = ::epoll_wait(epollfd_, &*events_.begin(), static_cast<int>(events_.size()), timeoutMs);
-    int saveErrno = errno;
-    Timestamp now(Timestamp::now());
-
-    if (numEvents > 0)
-    {
-        LOG_INFO("%d events happend\n", numEvents); // LOG_DEBUG最合理
-        fillActiveChannels(numEvents, activeChannels); // 每个事件 = 某个fd + 事件类型, 然后封装成Channel, 然后存到activeChannels中.
-        if (numEvents == events_.size()) // 扩容操作
-        {
-            events_.resize(events_.size() * 2); // 手动扩容?
-        }
-    }
-    else if (numEvents == 0)
-    {
-        LOG_DEBUG("%s timeout!\n", __FUNCTION__);
-    }
-    else
-    {
-        if (saveErrno != EINTR)
-        {
-            errno = saveErrno;
-            LOG_ERROR("EPollPoller::poll() error!");
-        }
-    }
-    return now;
-}
-
 // channel update remove => EventLoop updateChannel removeChannel => Poller updateChannel removeChannel
 void EPollPoller::updateChannel(Channel *channel) // 这是修改Channel感兴趣的事情. Channel会修改events_成员变量, 就是它感兴趣的事情.
 {
@@ -75,7 +46,7 @@ void EPollPoller::updateChannel(Channel *channel) // 这是修改Channel感兴�
             int fd = channel->fd();
             channels_[fd] = channel; // 注册到Poller中. 通过哈希表管理
         }
-        else // index == kDeleted
+        else // index == kDeleted. muduo源码中有些assert, 删掉了.
         {
         }
         channel->set_index(kAdded);
@@ -83,8 +54,7 @@ void EPollPoller::updateChannel(Channel *channel) // 这是修改Channel感兴�
     }
     else // channel已经在Poller中注册过了
     {
-        int fd = channel->fd();
-        if (channel->isNoneEvent())
+        if (channel->isNoneEvent()) // 当前channel对任何事情都不感兴趣
         {
             update(EPOLL_CTL_DEL, channel);
             channel->set_index(kDeleted);
@@ -112,7 +82,44 @@ void EPollPoller::removeChannel(Channel *channel)
     channel->set_index(kNew);
 }
 
+
+Timestamp EPollPoller::poll(int timeoutMs, ChannelList *activeChannels)
+{
+    // 由于频繁调用poll 实际上应该用LOG_DEBUG输出日志更为合理 当遇到并发场景 关闭DEBUG日志提升效率
+    LOG_INFO("func=%s => fd total count:%lu\n", __FUNCTION__, channels_.size());
+
+    // 这里用&*events_.begin(), 不错. events_是一个vector.   但也可以用events_.data().
+    int numEvents = ::epoll_wait(epollfd_, &*events_.begin(), static_cast<int>(events_.size()), timeoutMs);
+    int saveErrno = errno;
+    Timestamp now(Timestamp::now());
+
+    if (numEvents > 0)
+    {
+        LOG_INFO("%d events happend\n", numEvents); // LOG_DEBUG最合理
+        fillActiveChannels(numEvents, activeChannels); // 每个事件 = 某个fd + 事件类型, 然后封装成Channel, 然后存到activeChannels中.
+        if (numEvents == events_.size()) // 扩容操作, 因为有maxevents上限.
+        {
+            events_.resize(events_.size() * 2); // 手动扩容
+        }
+    }
+    else if (numEvents == 0)
+    {
+        LOG_DEBUG("%s timeout!\n", __FUNCTION__);
+    }
+    else
+    {
+        if (saveErrno != EINTR)
+        {
+            errno = saveErrno;
+            LOG_ERROR("EPollPoller::poll() error!");
+        }
+    }
+    return now;
+}
+
 // 填写活跃的连接
+// EventLoop调用poll, poll调用fillActiveChannels, activeChannels是一个vector, 感觉就是epoll_wait返回的东西, 就是EventList, 转化成channel.
+// EventLoop调用poll, 施磊原话: EventLoop就拿到了它的Poller给它返回的所有发生事件的channel列表了.
 void EPollPoller::fillActiveChannels(int numEvents, ChannelList *activeChannels) const
 {
     for (int i = 0; i < numEvents; ++i)
@@ -151,15 +158,11 @@ void EPollPoller::update(int operation, Channel *channel) // 这是Channel中
 {
     epoll_event event;
     ::memset(&event, 0, sizeof(event));
+    event.events = channel->events(); // 感兴趣的事件, 比特位表示
+    event.data.fd = channel->fd();
+    event.data.ptr = channel; // 这里是联合体, fd会被channel指针覆盖掉.
 
-    int fd = channel->fd();
-
-    event.events = channel->events();
-    //这里是联合体所以data.fd写了没有意义会被data.ptr覆盖
-    // event.data.fd = fd;
-    event.data.ptr = channel;
-
-    if (::epoll_ctl(epollfd_, operation, fd, &event) < 0)
+    if (::epoll_ctl(epollfd_, operation, channel->fd(), &event) < 0)
     {
         if (operation == EPOLL_CTL_DEL)
         {

@@ -27,27 +27,26 @@ public:
     // 退出事件循环
     void quit();
 
-    Timestamp pollReturnTime() const { return pollRetureTime_; }
+    Timestamp pollReturnTime() const { return pollReturnTime_; }
 
     // 在当前loop中执行
     void runInLoop(Functor cb);
-    // 把上层注册的回调函数cb放入队列中 唤醒loop所在的线程执行cb
+    // 把cb放入队列中 唤醒loop所在的线程执行cb, 问题这里的cb是啥? 哪里注册的,啥功能.
     void queueInLoop(Functor cb);
 
-    // 通过eventfd唤醒loop所在的线程
+    // 通过eventfd唤醒loop所在的线程, mainReactor唤醒subReactor
     void wakeup();
 
     // EventLoop的方法 => Poller的方法
     void updateChannel(Channel *channel);
     void removeChannel(Channel *channel);
-    bool hasChannel(Channel *channel);
 
-    // 判断EventLoop对象是否在自己的线程里
+    // 判断EventLoop对象是否在自己的线程里, TcpConnection调用loop_->isInLoopThread()
     bool isInLoopThread() const { return threadId_ == CurrentThread::tid(); } // threadId_为EventLoop创建时的线程id CurrentThread::tid()为当前线程id
     // threadId_是loop对象的成员变量, CurrentThread是当前CPU运行的线程.
 
 private:
-    void handleRead();        // 给eventfd返回的文件描述符wakeupFd_绑定的事件回调 当wakeup()时 即有事件发生时 调用handleRead()读wakeupFd_的8字节 同时唤醒阻塞的epoll_wait
+    void handleRead();        // wake up 给eventfd返回的文件描述符wakeupFd_绑定的事件回调 当wakeup()时 即有事件发生时 调用handleRead()读wakeupFd_的8字节 同时唤醒阻塞的epoll_wait
     void doPendingFunctors(); // 执行上层回调
 
     using ChannelList = std::vector<Channel *>;
@@ -57,7 +56,7 @@ private:
 
     const pid_t threadId_; // 记录当前EventLoop是被哪个线程id创建的 即标识了当前EventLoop的所属线程id
 
-    Timestamp pollRetureTime_; // Poller返回发生事件的Channels的时间点
+    Timestamp pollReturnTime_; // Poller返回发生事件的Channels的时间点
     std::unique_ptr<Poller> poller_;
 
     int wakeupFd_; // 作用：当mainLoop获取一个新用户的Channel 需通过轮询算法选择一个subLoop 通过该成员唤醒subLoop处理Channel
