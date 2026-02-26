@@ -17,7 +17,7 @@ Socket::~Socket()
 void Socket::bindAddress(const InetAddress &localaddr)
 {
     if (0 != ::bind(sockfd_, (sockaddr *)localaddr.getSockAddr(), sizeof(sockaddr_in)))
-    {
+    { // 返回-1表示错误, 下面listen accept
         LOG_FATAL("bind sockfd:%d fail\n", sockfd_);
     }
 }
@@ -30,7 +30,7 @@ void Socket::listen()
     }
 }
 
-int Socket::accept(InetAddress *peeraddr)
+int Socket::accept(InetAddress *peeraddr) // 注意Acceptor构造函数中初始化acceptSocket_创建socket也指定了非阻塞, 但那是监听套接字, 这里accept也设置非阻塞是针对连接套接字.
 {
     /**
      * 1. accept函数的参数不合法
@@ -42,6 +42,7 @@ int Socket::accept(InetAddress *peeraddr)
     socklen_t len = sizeof(addr);
     ::memset(&addr, 0, sizeof(addr));
     // fixed : int connfd = ::accept(sockfd_, (sockaddr *)&addr, &len);
+    // 传统写法: accept + fcntl设置阻塞等, accept4简化后可以写在一起.
     int connfd = ::accept4(sockfd_, (sockaddr *)&addr, &len, SOCK_NONBLOCK | SOCK_CLOEXEC);
     if (connfd >= 0)
     {
@@ -50,7 +51,7 @@ int Socket::accept(InetAddress *peeraddr)
     return connfd;
 }
 
-void Socket::shutdownWrite()
+void Socket::shutdownWrite() // 优雅关闭
 {
     if (::shutdown(sockfd_, SHUT_WR) < 0)
     {
@@ -69,6 +70,7 @@ void Socket::setTcpNoDelay(bool on)
 
 void Socket::setReuseAddr(bool on)
 {
+    // Time_wait导致端口暂时不能绑定!!!
     // SO_REUSEADDR 允许一个套接字强制绑定到一个已被其他套接字使用的端口。
     // 这对于需要重启并绑定到相同端口的服务器应用程序非常有用。
     int optval = on ? 1 : 0;

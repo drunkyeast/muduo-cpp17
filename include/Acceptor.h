@@ -17,7 +17,9 @@ public:
     Acceptor(EventLoop *loop, const InetAddress &listenAddr, bool reuseport);
     ~Acceptor();
     //设置新连接的回调函数
-    void setNewConnectionCallback(const NewConnectionCallback &cb) { NewConnectionCallback_ = cb; }
+    // 施磊也说了: 陈硕又是用的move(cb), 这里又没加. 这就是我刚总结的sink parameter/argument嘛.
+    // 允许调用者传入临时对象或显式 move，减少一次拷贝
+    void setNewConnectionCallback(NewConnectionCallback cb) { NewConnectionCallback_ = std::move(cb); }
     // 判断是否在监听
     bool listenning() const { return listenning_; }
     // 监听本地端口

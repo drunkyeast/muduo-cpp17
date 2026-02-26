@@ -20,7 +20,7 @@
 #include "Buffer.h"
 
 // 对外的服务器编程使用的类
-class TcpServer
+class TcpServer : noncopyable
 {
 public:
     using ThreadInitCallback = std::function<void(EventLoop *)>;
@@ -38,12 +38,12 @@ public:
     ~TcpServer();
 
     void setThreadInitCallback(const ThreadInitCallback &cb) { threadInitCallback_ = cb; } 
-    void setConnectionCallback(const ConnectionCallback &cb) { connectionCallback_ = cb; }
-    void setMessageCallback(const MessageCallback &cb) { messageCallback_ = cb; }
+    void setConnectionCallback(const ConnectionCallback &cb) { connectionCallback_ = cb; } // example的main中只用到了这几个
+    void setMessageCallback(const MessageCallback &cb) { messageCallback_ = cb; } // example的main中只用到了这几个
     void setWriteCompleteCallback(const WriteCompleteCallback &cb) { writeCompleteCallback_ = cb; }
 
     // 设置底层subloop的个数
-    void setThreadNum(int numThreads);
+    void setThreadNum(int numThreads); // example的main中只用到了这几个
     /**
      * 如果没有监听, 就启动服务器(监听).
      * 多次调用没有副作用.
@@ -52,8 +52,11 @@ public:
     void start();
 
 private:
-    void newConnection(int sockfd, const InetAddress &peerAddr);
+    // 陈硕: Not thread safe, but in loop  这就是one loop per thread设计哲学: 把并发问题转化成单线程问题. 这函数只会在mainloop对应的线程中执行.
+    void newConnection(int sockfd, const InetAddress &peerAddr); // 这个绝对的核心!!, 后面两个和前面几个回调也在这里面.
+    // 陈硕: Thread safe. 它利用runInLoop把remove操作切回了mainLoop执行下面那个, 这里面涉及EventLoop的实现细节, 略.
     void removeConnection(const TcpConnectionPtr &conn);
+    // 陈硕: Not thread safe, but in loop
     void removeConnectionInLoop(const TcpConnectionPtr &conn);
 
     using ConnectionMap = std::unordered_map<std::string, TcpConnectionPtr>;
@@ -67,13 +70,14 @@ private:
 
     std::shared_ptr<EventLoopThreadPool> threadPool_; // one loop per thread
 
-    ConnectionCallback connectionCallback_;       //有新连接时的回调
+    ConnectionCallback connectionCallback_;       // 有新连接时的回调
     MessageCallback messageCallback_;             // 有读写事件发生时的回调
     WriteCompleteCallback writeCompleteCallback_; // 消息发送完成后的回调
 
     ThreadInitCallback threadInitCallback_; // loop线程初始化的回调
     int numThreads_;//线程池中线程的数量。
-    std::atomic_int started_;
+    // std::atomic_int started_; // 用atomic<int>更C++morden, 然后用bool语义更明确.
+    std::atomic<bool> started_;
     int nextConnId_;
     ConnectionMap connections_; // 保存所有的连接
 };

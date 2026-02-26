@@ -19,12 +19,13 @@ public:
     void listen();
     int accept(InetAddress *peeraddr);
 
-    void shutdownWrite();
+    void shutdownWrite(); // 优雅的半关闭
 
-    void setTcpNoDelay(bool on);
-    void setReuseAddr(bool on);
-    void setReusePort(bool on);
-    void setKeepAlive(bool on);
+    void setTcpNoDelay(bool on); // 禁用Nagle
+    void setReuseAddr(bool on); // Time_wait导致暂时不能绑定端口
+    void setReusePort(bool on); // 负载均衡相关
+    void setKeepAlive(bool on); // TCP的keep-alive
+    // 这把背的八股都用上了, 只有负载均衡是之前没见过的.
 
 private:
     const int sockfd_;
