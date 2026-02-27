@@ -58,18 +58,54 @@ TcpConnection::~TcpConnection()
     LOG_INFO("TcpConnection::dtor[%s] at fd=%d state=%d\n", name_.c_str(), channel_->fd(), (int)state_);
 }
 
-void TcpConnection::send(const std::string &buf)
+/*
+我感觉send非常关键啊, 
+1. 目前代码中send是在OnMessage中调用的, 而OnMessage回调, 从main函数->TcpServer->TcpConnection->channel这样一层层传递回调的. 
+2. send和OnMessage回调一定是在subReactor中执行, 不可能在mainLoop和mainReactor中执行. 这底层是channel的逻辑.和Acceptor的逻辑. 
+3. 但subReactor如果有工作线程, 如下面例子, send依然可能跨线程执行, 但不是从subReactor跨到主Reactor, 而是跨到worker线程池, 但worker线程池中的TcpConnection conn, 里面保存了loop, 在完成复制的图像等耗时计算后, 会继续调用conn->send, 此时就跨线程了. 
+void onMessage(...) {
+    // 1. 读数据 (耗时 0.1ms)
+    string msg = buf->retrieveAllAsString();
+    
+    // 2. 业务逻辑：比如图像识别 (耗时 100ms)
+    string result = heavyCompute(msg); // <--- 这里阻塞了 SubReactor 100ms！ 
+    
+    // 3. 发送结果 (耗时 0.1ms)
+    conn->send(result);
+
+    // 2,3 的逻辑改造, 引入Worker线程池, 这样就会有跨线程,  但不是从subReactor跨到主Reactor, 而是跨到worker线程池,
+    threadPool.run([conn, msg] {
+        // --- Worker 线程 ---
+        // 3. 业务逻辑 (耗时 100ms)
+        // 注意：这里是在 Worker 线程里跑的！SubReactor 早就去干别的活了！
+        string result = heavyCompute(msg); 
+        
+        // 4. 发送结果 (耗时 0.01ms)
+        // 只是把结果塞进 SubReactor 的队列，非常快
+        conn->send(result); 
+    });
+}
+4. 最后是buf的生命周期问题, 施磊老师重构的muduo, 没考虑清楚这一点, 应该参考muduo源码, buf要额外处理. 我把buf命名成message, 并已处理.
+5. isInLoopThread()的逻辑已经在runInLoop中有了, 不可以直接调用loop_->runInLoop吗? 我一开始就是从这个逻辑点, 延伸出这么一大片逻辑思考. 这里这样做是性能优化.
+*/
+void TcpConnection::send(std::string message)
 {
     if (state_ == kConnected)
     {
-        if (loop_->isInLoopThread()) // 这种是对于单个reactor的情况 用户调用conn->send时 loop_即为当前线程
+        if (loop_->isInLoopThread())
         {
-            sendInLoop(buf.c_str(), buf.size());
+            // 在当前线程，直接调用 sendInLoop
+            sendInLoop(message.data(), message.size()); // data和c_str都一样, 后者c风格. data语义更明确.
         }
         else
         {
-            loop_->runInLoop(
-                std::bind(&TcpConnection::sendInLoop, this, buf.c_str(), buf.size()));
+            // 跨线程调用：必须把 message 移动到 Lambda 中！
+            // lambda的[this, msg = std::move(message)]里面相当于自带auto. [&]全捕获几乎不会影响性能, 只是按需捕获更安全.
+            loop_->runInLoop([this, msg = std::move(message)](){
+                this->sendInLoop(msg.data(), msg.size());
+            });
+            // loop_->runInLoop(
+            //     std::bind(&TcpConnection::sendInLoop, this, message.c_str(), message.size()));
         }
     }
 }
@@ -88,10 +124,10 @@ void TcpConnection::sendInLoop(const void *data, size_t len)
         LOG_ERROR("disconnected, give up writing");
     }
 
-    // 表示channel_第一次开始写数据或者缓冲区没有待发送数据
+    // if no thing in output queue, try writing directly.
     if (!channel_->isWriting() && outputBuffer_.readableBytes() == 0)
     {
-        nwrote = ::write(channel_->fd(), data, len);
+        nwrote = ::write(channel_->fd(), data, len); // 明白, 你这儿发, 也不会保证全部发完啊, 有remaing.
         if (nwrote >= 0)
         {
             remaining = len - nwrote;
@@ -116,17 +152,15 @@ void TcpConnection::sendInLoop(const void *data, size_t len)
         }
     }
     /**
-     * 说明当前这一次write并没有把数据全部发送出去 剩余的数据需要保存到缓冲区当中
+     * 说明当前这一次write并没有把数据全部发送出去 剩余的数据需要保存到缓冲区当中(append到outputBuffer_中)
      * 然后给channel注册EPOLLOUT事件，Poller发现tcp的发送缓冲区有空间后会通知
-     * 相应的sock->channel，调用channel对应注册的writeCallback_回调方法，
-     * channel的writeCallback_实际上就是TcpConnection设置的handleWrite回调，
-     * 把发送缓冲区outputBuffer_的内容全部发送完成
-     **/
+     **/ 
+    // 卡码笔记有些傻逼注释, 不会写就别写, 我已经删除. 所以学东西要学一手的, 二手的什么垃圾.
     if (!faultError && remaining > 0)
     {
         // 目前发送缓冲区剩余的待发送的数据的长度
         size_t oldLen = outputBuffer_.readableBytes();
-        if (oldLen + remaining >= highWaterMark_ && oldLen < highWaterMark_ && highWaterMarkCallback_)
+        if (oldLen + remaining >= highWaterMark_ && oldLen < highWaterMark_ && highWaterMarkCallback_) // testserver中没设置这个回调, 程序比较简单, 不用也罢. 但  在生产环境中，不设置高水位回调是一个巨大的隐患，可能会导致内存耗尽（OOM）。
         {
             loop_->queueInLoop(
                 std::bind(highWaterMarkCallback_, shared_from_this(), oldLen + remaining));
@@ -151,8 +185,9 @@ void TcpConnection::shutdown()
 
 void TcpConnection::shutdownInLoop()
 {
-    if (!channel_->isWriting()) // 说明当前outputBuffer_的数据全部向外发送完成
-    {
+    if (!channel_->isWriting()) // 说明当前outputBuffer_的数据全部向外发送完成? 
+    { // isWriting是表示对可以事件感兴趣啊, 应该命名成isWritable吧? isWritable也表示数据在应用层Buffer中没有发完.
+      // 见TcpConnection::sendInLoop这个函数最后面, channel_->enableWriting(), TcpConnection::handleWrite有disableWriting
         socket_->shutdownWrite();
     }
 }
@@ -161,20 +196,25 @@ void TcpConnection::shutdownInLoop()
 void TcpConnection::connectEstablished()
 {
     setState(kConnected);
-    channel_->tie(shared_from_this());
+    channel_->tie(shared_from_this()); // 考虑一个情况, TcpConnection销毁(connections_.erase)后, 再销毁channel, 然后从epoll_ctl Delete. 
+    // 那如果在TcpConnection和Channel销毁(包括fd从epoll销毁)的中间, epoll又有事件发生, Channel还要执行吗? 通过tie_这个weak_ptr去检查TcpConnection是否挂掉了. 挂掉了就别干了.
+    // 他们的销毁会跨线程吗? 答: connections_是在TcpServer中, 主Reactor, 所以connections_.erase时会跨线程.
+
     channel_->enableReading(); // 向poller注册channel的EPOLLIN读事件
 
-    // 新连接建立 执行回调
+    // 新连接建立 执行回调  这个回调就是testserver里面的用户注册的onConnection
     connectionCallback_(shared_from_this());
 }
-// 连接销毁
+// 连接销毁, 销毁全流程: channel那儿开始, 调用回调closeCallback_, 定义在TcpConnection的handleClose中, 然后调用connectionCallback_(定义在testserver的onConnection)和closeCallback_(定义在TcpServer::removeConnection), 然后connections_.erase销毁对象, 紧接着执行conn->connectDestroyed();
+// 线程分析: 关键是OnMessage和TcpServer::removeConnection, 他们都在TcpConnection的上层定义的, 但前者是有subLoop执行的, 后者有loop_->runInLoop, 而这里的loop_因为是TcpServer的loop_所以切换到主线程了. 那如何从主线程切回去呢? EventLoop *ioLoop = conn->getLoop(); ioLoop->queueInLoop(...conn->connectDestroyed();...)
+// AI说的: TcpConnection对象的销毁, 除了“户口登记”和“户口注销”是在 MainLoop，其他的“生老病死”全都在 SubLoop。
 void TcpConnection::connectDestroyed()
 {
     if (state_ == kConnected)
     {
         setState(kDisconnected);
         channel_->disableAll(); // 把channel的所有感兴趣的事件从poller中删除掉
-        connectionCallback_(shared_from_this()); // 这儿调用用户注册的回调函数?
+        connectionCallback_(shared_from_this()); // 这儿调用用户注册的回调函数 删除连接和建立连接都是onConnection, 应该分开的.
     }
     channel_->remove(); // 把channel从poller中删除掉
 }
@@ -187,7 +227,11 @@ void TcpConnection::handleRead(Timestamp receiveTime)
     if (n > 0) // 有数据到达
     {
         // 已建立连接的用户有可读事件发生了 调用用户传入的回调操作onMessage shared_from_this就是获取了TcpConnection的智能指针
-        messageCallback_(shared_from_this(), &inputBuffer_, receiveTime);
+        messageCallback_(shared_from_this(), &inputBuffer_, receiveTime); // 这个很重要啊, 这个函数就是main函数中设置的用户回调onMessage, 而这个handleRead又是注册给channel的回调, 最终是在subLoop中调用的.
+        /*
+        举例: sp1->对象(this), sp2 = sp1, 这样才能共享(共享一个控制块). 如果你用this创建一个sp2(创建一个新的控制块), 那么sp2和sp1不知道对方的存在, 导致double delete.
+        底层原理: TcpConnection继承了public std::enable_shared_from_this<TcpConnection>, 其底层有一个weak_ptr. 这里就是把weak_ptr升级成shared_ptr返回而已. 其他细节就别说了.
+        */
     }
     else if (n == 0) // 客户端断开
     {
@@ -203,7 +247,7 @@ void TcpConnection::handleRead(Timestamp receiveTime)
 
 void TcpConnection::handleWrite()
 {
-    if (channel_->isWriting())
+    if (channel_->isWriting()) // isWritable命名更合理吧, 判断是否可写. 看它对EPOLLOUT事件是否感兴趣.
     {
         int savedErrno = 0;
         ssize_t n = outputBuffer_.writeFd(channel_->fd(), &savedErrno);
@@ -216,6 +260,7 @@ void TcpConnection::handleWrite()
                 if (writeCompleteCallback_)
                 {
                     // TcpConnection对象在其所在的subloop中 向pendingFunctors_中加入回调
+                    // 质疑: 这儿有必要这样写吗? 线程切换问题?
                     loop_->queueInLoop(
                         std::bind(writeCompleteCallback_, shared_from_this()));
                 }
@@ -243,7 +288,7 @@ void TcpConnection::handleClose()
     channel_->disableAll();
 
     TcpConnectionPtr connPtr(shared_from_this());
-    connectionCallback_(connPtr); // 连接回调 // 这注释写的啥玩意儿啊. 不如别人原本的好: 调用用户自定义的连接事件处理函数, 可以有可无.
+    connectionCallback_(connPtr); // 调用用户自定义的连接事件处理函数onConnectionCallback, 新连接和断开连接都可以调用.
     closeCallback_(connPtr);      // 执行关闭连接的回调 执行的是TcpServer::removeConnection回调方法   // must be the last line
 }
 

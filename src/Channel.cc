@@ -20,16 +20,13 @@ Channel::~Channel()
     // 原本muduo作者在这是写了一些asset断言的, 用于debug. 直接删掉. realease版本会直接抹除assert.
 }
 
-// channel的tie方法什么时候调用过?  TcpConnection => channel
-/**
- * TcpConnection中注册了Channel对应的回调函数，传入的回调函数均为TcpConnection
- * 对象的成员方法，因此可以说明一点就是：Channel的结束一定晚于TcpConnection对象！
- * 此处用tie去解决TcpConnection和Channel的生命周期时长问题，从而保证了Channel对象能够在
- * TcpConnection销毁前销毁。
- **/
+// 卡码笔记的注释不靠谱, 傻逼一个.
+// 何时调用? TcpServer中newConnection是给Acceptor的回调, 有新链接建立=> newConnection回调执行=> 创建TcpConnection对象conn=> conn->connectEstablished => 里面执行channel_->tie(shared_from_this()); 且执行onConnection回调(testserver传递到Channel的)
+// 我还洞察到了一点: 用户设置的onConnection传递到TcpConnection就ok了, 没有进一步传递到Channel, 而OnMessage则是进一步传递到了Channel. 这也合理.
+
 void Channel::tie(const std::shared_ptr<void> &obj)
 {
-    tie_ = obj;
+    tie_ = obj; // 这个weak_ptr是Channel的成员变量
     tied_ = true;
 }
 //update 和remove => EpollPoller 更新channel在poller中的状态
@@ -71,7 +68,7 @@ void Channel::handleEventWithGuard(Timestamp receiveTime)
     LOG_INFO("[%s:%d]%s\n", __FILE__, __LINE__, __func__);
     LOG_INFO("channel handleEvent revents:%d\n", revents_);
     // 关闭
-    if ((revents_ & EPOLLHUP) && !(revents_ & EPOLLIN)) // 当TcpConnection对应Channel 通过shutdown 关闭写端 epoll触发EPOLLHUP
+    if ((revents_ & EPOLLHUP) && !(revents_ & EPOLLIN)) // 当发生挂起事件（如对端RST或连接意外断开）,客户端主动断开连接不会触发这个. 最后触发handleClose.
     {
         if (closeCallback_)
         {
@@ -87,7 +84,7 @@ void Channel::handleEventWithGuard(Timestamp receiveTime)
         }
     }
     // 读
-    if (revents_ & (EPOLLIN | EPOLLPRI))
+    if (revents_ & (EPOLLIN | EPOLLPRI)) // 客户端主动断开连接也是触发这个, readCallback_里面的handleRead里面读取到 0 byte, 表示客户端断开. 最后触发handleClose. 与上面殊途同归.
     {
         if (readCallback_)
         {

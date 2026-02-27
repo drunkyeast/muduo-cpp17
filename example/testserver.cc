@@ -43,8 +43,8 @@ private:
     void onMessage(const TcpConnectionPtr &conn, Buffer *buf, Timestamp time)
     {
         std::string msg = buf->retrieveAllAsString();
-        conn->send(msg);
-        // conn->shutdown();   // 关闭写端 底层响应EPOLLHUP => 执行closeCallback_
+        conn->send(std::move(msg));
+        // conn->shutdown();   // 关闭写端 底层响应EPOLLHUP => 执行closeCallback_ // send一次就shutdown吗? 这是短连接.
     }
     TcpServer server_;
     EventLoop *loop_;

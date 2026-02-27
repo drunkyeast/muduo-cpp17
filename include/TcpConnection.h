@@ -37,12 +37,13 @@ public:
     bool connected() const { return state_ == kConnected; }
 
     // 发送数据
-    void send(const std::string &buf);
+    void send(std::string buf);
     void sendFile(int fileDescriptor, off_t offset, size_t count); 
     
     // 关闭半连接
     void shutdown();
 
+    // 这一坨是上层TcpServer传递给TcpConnection的.
     void setConnectionCallback(const ConnectionCallback &cb)
     { connectionCallback_ = cb; }
     void setMessageCallback(const MessageCallback &cb)
@@ -69,6 +70,7 @@ private:
     };
     void setState(StateE state) { state_ = state; }
 
+    // 这些就是给channel用的回调. TcpConnection把回调传递给Channel的, 具体绑定在构造函数中使用.
     void handleRead(Timestamp receiveTime);
     void handleWrite();//处理写事件
     void handleClose();
@@ -90,8 +92,8 @@ private:
     const InetAddress peerAddr_;
 
     // 这些回调TcpServer也有 用户通过写入TcpServer注册 TcpServer再将注册的回调传递给TcpConnection TcpConnection再将回调注册到Channel中
-    ConnectionCallback connectionCallback_;       // 有新连接时的回调
-    MessageCallback messageCallback_;             // 有读写消息时的回调
+    ConnectionCallback connectionCallback_;       // 有新连接时的回调, main中设置的回调扔给TcpServer,再扔给TcpConnection然后扔给Channel(监听套接字的)
+    MessageCallback messageCallback_;             // 有读写消息时的回调, main中设置的回调扔给TcpServer,再扔给TcpConnection然后扔给Channel(非监听套接字的)
     WriteCompleteCallback writeCompleteCallback_; // 消息发送完成以后的回调
     HighWaterMarkCallback highWaterMarkCallback_; // 高水位回调
     CloseCallback closeCallback_; // 关闭连接的回调

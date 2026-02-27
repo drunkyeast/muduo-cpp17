@@ -5,6 +5,32 @@
 #include <algorithm>
 #include <stddef.h>
 
+// 重大感悟: 直接看代码, 比看视频好理解多了. 另外博客梳理得也很好. 就append和retrieveAsString这两个个关键函数. 还有readFd和writeFd.
+
+/// A buffer class modeled after org.jboss.netty.buffer.ChannelBuffer
+/// @code
+/// +-------------------+------------------+------------------+
+/// | prependable bytes |  readable bytes  |  writable bytes  |
+/// |                   |     (CONTENT)    |                  |
+/// +-------------------+------------------+------------------+
+/// |                   |                  |                  |
+/// 0      <=      readerIndex   <=   writerIndex    <=     size
+/// @endcode
+
+/* Buffer是怎么被 TcpConnection和main函数里面使用的
+       Socket (Kernel)
+          |     ^
+ readFd() |     | writeFd()
+          v     |
+    +-----------------+
+    |  TcpConnection  |
+    |                 |
+    |  inputBuffer_   |  ---> onMessage(buf) ---> 用户逻辑, 这个回调中的buf其实就是inputBuffer_, 在TcpConnection中handleRead中回调的.
+    |                 |
+    |  outputBuffer_  |  <--- send(data)     <--- 用户逻辑
+    +-----------------+
+*/
+
 // 网络库底层的缓冲区类型定义
 class Buffer
 {

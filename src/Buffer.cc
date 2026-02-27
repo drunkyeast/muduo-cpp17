@@ -35,10 +35,7 @@ ssize_t Buffer::readFd(int fd, int *saveErrno)
     vec[1].iov_base = extrabuf;
     vec[1].iov_len = sizeof(extrabuf);
 
-    // when there is enough space in this buffer, don't read into extrabuf.
-    // when extrabuf is used, we read 128k-1 bytes at most.
-    // 这里之所以说最多128k-1字节，是因为若writable为64k-1，那么需要两个缓冲区 第一个64k-1 第二个64k 所以做多128k-1
-    // 如果第一个缓冲区>=64k 那就只采用一个缓冲区 而不使用栈空间extrabuf[65536]的内容
+    // writable如果<64, 那就利用extrabuf, 保证每次至少读取64k, 64k是一个下限. writable如果非常大, 几MB, 那没extrabuf任何事.
     const int iovcnt = (writable < sizeof(extrabuf)) ? 2 : 1;
     const ssize_t n = ::readv(fd, vec, iovcnt);
 
@@ -48,12 +45,16 @@ ssize_t Buffer::readFd(int fd, int *saveErrno)
     }
     else if (n <= writable) // Buffer的可写缓冲区已经够存储读出来的数据了
     {
+        // 数据全在 vec[0] 里，直接移动 writerIndex_ 即可
         writerIndex_ += n;
     }
     else // extrabuf里面也写入了n-writable长度的数据
     {
+        // 数据溢出到了 vec[1] (extrabuf)
+        // 1. 先把 vec[0] 填满（writerIndex_ 移到末尾）
         writerIndex_ = buffer_.size();
-        append(extrabuf, n - writable); // 对buffer_扩容 并将extrabuf存储的另一部分数据追加至buffer_
+        // 2. 把 vec[1] 里的数据追加到 Buffer 末尾（触发扩容）, 这个扩容不一定是resize, 也可能往前移就好.
+        append(extrabuf, n - writable);
     }
     return n;
 }

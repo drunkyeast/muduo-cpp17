@@ -49,6 +49,7 @@ TcpServer::~TcpServer()
         // 销毁连接
         // conn->getLoop()->runInLoop(
         //     std::bind(&TcpConnection::connectDestroyed, conn)); // 这个bind会拷贝conn参数, 导致引用计数+1.
+        // 这里又要从主线程切换subLoop线程去删除, 践行one loop per thread.
         conn->getLoop()->runInLoop([conn](){
             conn->connectDestroyed();
         });
@@ -85,7 +86,7 @@ void TcpServer::start()
 }
 
 // 有一个新用户连接，acceptor会执行这个回调操作，负责将mainLoop接收到的请求连接(acceptChannel_会有读事件发生)通过回调轮询分发给subLoop去处理
-void TcpServer::newConnection(int sockfd, const InetAddress &peerAddr)
+void TcpServer::newConnection(int sockfd, const InetAddress &peerAddr) // 注意: Acceptor中accept获取新连接的fd, 然后调用这个回调, 所以sockfd和peerAddr就是新连接.
 {
    // 轮询算法 选择一个subLoop 来管理connfd对应的channel
     EventLoop *ioLoop = threadPool_->getNextLoop();
@@ -102,18 +103,18 @@ void TcpServer::newConnection(int sockfd, const InetAddress &peerAddr)
     sockaddr_in local;
     ::memset(&local, 0, sizeof(local));
     socklen_t addrlen = sizeof(local);
-    if(::getsockname(sockfd, (sockaddr *)&local, &addrlen) < 0)
-    {
+    if(::getsockname(sockfd, (sockaddr *)&local, &addrlen) < 0) // peerAddr是对端的IP+Port信息, 这里是获取sockfd绑定的本地的地址信息
+    { // 这个与listen的IP地址也不一样, 它可能是0.0.0.0这样的通配符, 这个是返回实际的网卡上的IP.
         LOG_ERROR("sockets::getLocalAddr");
     }
 
-    InetAddress localAddr(local);
+    InetAddress localAddr(local); // 对吧, 这儿命名为localAddr, 而peerAddr是对端的.
     // new改成make_shared
     TcpConnectionPtr conn = std::make_shared<TcpConnection> (ioLoop,
                                             connName,
-                                            sockfd,
-                                            localAddr,
-                                            peerAddr);
+                                            sockfd,     // fd
+                                            localAddr,  // 本地IP+Port
+                                            peerAddr);  // 对端IP+Port, 这些整合在一起就是TcpConnection
     connections_[connName] = conn;
 
     // 下面的回调都是用户设置给TcpServer => TcpConnection的，至于Channel绑定的则是TcpConnection设置的四个，handleRead,handleWrite... 这下面的回调用于handlexxx函数中
@@ -121,9 +122,11 @@ void TcpServer::newConnection(int sockfd, const InetAddress &peerAddr)
     conn->setMessageCallback(messageCallback_);
     conn->setWriteCompleteCallback(writeCompleteCallback_);
 
-    // 设置了如何关闭连接的回调
-    // conn->setCloseCallback(
-    //     std::bind(&TcpServer::removeConnection, this, std::placeholders::_1));
+    // 设置了如何关闭连接的回调(这个非常核心!!!) 
+    // 好, 那总结一下TcpConnection的关闭情况, 
+    // 1. 服务器主动关闭, 逻辑是conn->shutdown, testserver中有但被注释了.
+    // 2. 客户端断开连接, epoll_wait发现的事EPOLLIN事件, channel发生readCallback, 如果读取为0, 就表明客户端关闭, 然后调用handleClose. TcpConnection里面的handleRead触发了handleClose
+    // 3. 其他情况, 例如RST, epoll_wait发现是EPOLLHUP事件, 直接触发handleClose的回调.
     conn->setCloseCallback([this](const TcpConnectionPtr &conn) { // 注意, 这儿的conn与外面的conn重名了, 小心
         this->removeConnection(conn);
     });

@@ -37,10 +37,10 @@ public:
               Option option = kNoReusePort);
     ~TcpServer();
 
-    void setThreadInitCallback(const ThreadInitCallback &cb) { threadInitCallback_ = cb; } 
+    void setThreadInitCallback(const ThreadInitCallback &cb) { threadInitCallback_ = cb; } // 没用到
     void setConnectionCallback(const ConnectionCallback &cb) { connectionCallback_ = cb; } // example的main中只用到了这几个
     void setMessageCallback(const MessageCallback &cb) { messageCallback_ = cb; } // example的main中只用到了这几个
-    void setWriteCompleteCallback(const WriteCompleteCallback &cb) { writeCompleteCallback_ = cb; }
+    void setWriteCompleteCallback(const WriteCompleteCallback &cb) { writeCompleteCallback_ = cb; } // 没用到
 
     // 设置底层subloop的个数
     void setThreadNum(int numThreads); // example的main中只用到了这几个
@@ -53,7 +53,7 @@ public:
 
 private:
     // 陈硕: Not thread safe, but in loop  这就是one loop per thread设计哲学: 把并发问题转化成单线程问题. 这函数只会在mainloop对应的线程中执行.
-    void newConnection(int sockfd, const InetAddress &peerAddr); // 这个绝对的核心!!, 后面两个和前面几个回调也在这里面.
+    void newConnection(int sockfd, const InetAddress &peerAddr); // 这个绝对的核心!!, 后面两个和前面两个remove回调也在这里面. 以及后面的 connectionCallback_等等也在这里面.
     // 陈硕: Thread safe. 它利用runInLoop把remove操作切回了mainLoop执行下面那个, 这里面涉及EventLoop的实现细节, 略.
     void removeConnection(const TcpConnectionPtr &conn);
     // 陈硕: Not thread safe, but in loop
@@ -70,9 +70,9 @@ private:
 
     std::shared_ptr<EventLoopThreadPool> threadPool_; // one loop per thread
 
-    ConnectionCallback connectionCallback_;       // 有新连接时的回调
+    ConnectionCallback connectionCallback_;       // 有新连接时的回调, TcpServer扔给TcpConnection然后扔给Channel
     MessageCallback messageCallback_;             // 有读写事件发生时的回调
-    WriteCompleteCallback writeCompleteCallback_; // 消息发送完成后的回调
+    WriteCompleteCallback writeCompleteCallback_; // 消息发送完成后的回调, testserver中没有使用.
 
     ThreadInitCallback threadInitCallback_; // loop线程初始化的回调
     int numThreads_;//线程池中线程的数量。
