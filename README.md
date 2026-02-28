@@ -1,11 +1,13 @@
 # 简历相关
-## 2月底mark一下后续优化点.
-cb传递, 直接拷贝传递, 还是move后传递.... 在Channel/EpollPoller/EventLoop三个模块中.
 
 ## 面试时怎么讲呢?
-写一个3分钟项目介绍稿. 梳理流程. 博客已经讲得很清楚了. (你要自己写啊)
-深入讲几个技术点, 例如one loop per thread, Reactor架构等等.
-讲一下我C++17的优化点。 和一些改进点（甚至可以“人造bug”：聊一下我bind改成lambda，但用的引用捕获导致bug，编故事嘛）
+写一个3分钟项目介绍稿.
+例如one loop per thread, Reactor架构等等.
+Reactor设计模式.
+
+One Loop Per Thread 不是说"对象只能被一个线程知道"，而是说"对象只能在它所属的线程中被操作".
+例如某个socket/channel/TcpConnection要close关闭了, 不是在子Reactor中直接关闭, 而是要绕一圈到主Reactor再到子Reactor. 然后主Reactor(即TcpServer)里面又保存了所有的connection/socket/channel的信息.
+AI说TcpServer 只是"持有引用"，不是"操作对象". TcpConnection 的操作权属于子线程.
 
 ## 这个项目怎么这么多回调函数? 用了哪些设计模式？
 网络库/异步框架：都很多.
@@ -20,63 +22,24 @@ cb传递, 直接拷贝传递, 还是move后传递.... 在Channel/EpollPoller/Eve
 3. 工厂模式用于创建Poller，通过newDefaultPoller根据环境变量决定使用epoll还是poll。
 4. 单例模式用于Logger，保证全局只有一个日志对象。
 RAII和线程池算设计模式吗？
-## 很重要!! 关于One Loop Per Thread 设计模式.
-One Loop Per Thread 不是说"对象只能被一个线程知道"，而是说"对象只能在它所属的线程中被操作".
-例如某个socket/channel/TcpConnection要close关闭了, 不是在子Reactor中直接关闭, 而是要绕一圈到主Reactor再到子Reactor. 然后主Reactor(即TcpServer)里面又保存了所有的connection/socket/channel的信息.
-AI说TcpServer 只是"持有引用"，不是"操作对象". TcpConnection 的操作权属于子线程.
 
-## 我要用C++17进一步重构, 可以下面这些角度:
+## 深入技术点一: send极致优化
+深入讲几个技术点, shared_from_this, swap惯用法.
+
+## 深入技术点二: 
+bind改成lambda
+跨线程引用捕获的bug
+讲一下我C++17的优化点。 
+
 修改建议优先级
 高优先级：inline变量、std::string_view、lambda替代std::bind、[[nodiscard]]
 中优先级：结构化绑定、std::optional、std::scoped_lock
 低优先级：其他特性按需使用
 
-## 还有优化
-学习std::function的时候, 涉及回调函数是, 有个开销, 用模板函数更好. 我说得不清楚, 直接看下面代码演示.
-方案1：使用 std::function（你目前的方式）
-```cpp
-class EventLoop {
-public:
-    using Functor = std::function<void()>;
-    
-    void runInLoop(Functor cb) {
-        if (isInLoopThread()) {
-            cb();  // 有虚函数调用开销
-        } else {
-            queueInLoop(std::move(cb));
-        }
-    }
-};
-```
-方案2：使用模板参数（性能优化版本）
-```cpp
-class EventLoop {
-public:
-    // 使用模板参数，让编译器知道具体类型
-    template<typename Functor>
-    void runInLoop(Functor&& cb) {
-        if (isInLoopThread()) {
-            cb();  // 可以内联，零开销！
-        } else {
-            queueInLoop(std::forward<Functor>(cb));
-        }
-    }
-    
-private:
-    // 存储时仍然用 std::function
-    void queueInLoop(std::function<void()> cb) {
-        // ...
-    }
-};
-```
-这个知识点也可以回答面试官提问: "你的项目是否用到了模板".
-答: 是的，我了解到 std::function 有一定的性能开销，主要是类型擦除导致的虚函数调用和可能的堆分配。优化方式是将回调函数作为模板函数的参数，这样编译器在编译期就知道具体类型，可以进行内联优化，避免间接调用。
-这个知识点太进阶了. 
-答: 你说得模板指的是泛型编程吗? 用的STL这个算用了模板吗? 网络库的业务逻辑是针对具体的网络事件和 TCP 连接，不需要泛型化.
+## 深入技术点三: Functor也写成完美转发? 回调的开销.
 
-## 关于回调函数
-看起来很混乱, 以及std::function, template优化, lambda, 有点理不清楚.
-AI回答: 你的代码应该保持 std::function，但可以用 lambda 替代 std::bind：
+
+
 # ---------------------------------------------------------
 
 # muduo-core
