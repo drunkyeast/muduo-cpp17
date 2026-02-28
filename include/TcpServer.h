@@ -38,9 +38,9 @@ public:
     ~TcpServer();
 
     void setThreadInitCallback(const ThreadInitCallback &cb) { threadInitCallback_ = cb; } // 没用到
-    void setConnectionCallback(const ConnectionCallback &cb) { connectionCallback_ = cb; } // example的main中只用到了这几个
+    void setConnectionCallback(const ConnectionCallback &cb) { connectionCallback_ = cb; } // example的main中只用到了这几个, 连接建立和断开都是这个.
     void setMessageCallback(const MessageCallback &cb) { messageCallback_ = cb; } // example的main中只用到了这几个
-    void setWriteCompleteCallback(const WriteCompleteCallback &cb) { writeCompleteCallback_ = cb; } // 没用到
+    void setWriteCompleteCallback(const WriteCompleteCallback &cb) { writeCompleteCallback_ = cb; } // 没用到, 意义在于传输1GB这样的大文件
 
     // 设置底层subloop的个数
     void setThreadNum(int numThreads); // example的main中只用到了这几个

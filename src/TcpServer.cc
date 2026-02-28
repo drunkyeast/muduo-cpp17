@@ -74,7 +74,9 @@ void TcpServer::start()
 {
     // if (started_ == false) {
     //     started_ = true;
-    // } // 这样写是线程不安全的, 所以用exchange, 或者对于atomic<int>变量用fetch_add(1), 但他们返回的都是旧值. 不影响判断逻辑.
+    // } 
+    // 假设两个线程同时start, 就线程不安全的, 所以用exchange. 项目中不可能同时start啊, 只能说防御编程吧. 
+    // 对于atomic<int>变量用fetch_add(1), 它与exchange一样, 但返回的都是exchange之前的旧值. 不影响判断逻辑.
     if (started_.exchange(true) == false)    // 防止一个TcpServer对象被start多次, 用线程安全的写法, 
     {
         threadPool_->start(threadInitCallback_);    // 启动底层的loop线程池

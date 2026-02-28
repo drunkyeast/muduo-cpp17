@@ -32,7 +32,7 @@ void Thread::start()                                                        // �
     thread_ = std::thread([&]() {   // 移动赋值，不需要 new 或 make_shared
         tid_ = CurrentThread::tid();
         sem_post(&sem);
-        func_();
+        func_(); // 这里才启动线程中的函数
     });
 
     // 这里必须等待获取上面新创建的线程的tid值

@@ -35,8 +35,9 @@
 class Buffer
 {
 public:
-    static const size_t kCheapPrepend = 8;//初始预留的prependabel空间大小
-    static const size_t kInitialSize = 1024;
+    static inline constexpr size_t kCheapPrepend = 8;//初始预留的prependabel空间大小
+    static inline constexpr size_t kInitialSize = 1024;
+
 
     explicit Buffer(size_t initalSize = kInitialSize)
         : buffer_(kCheapPrepend + initalSize)

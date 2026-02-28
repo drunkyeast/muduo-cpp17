@@ -6,7 +6,7 @@ EventLoopThread::EventLoopThread(ThreadInitCallback cb,
                                  const std::string &name)
     : loop_(nullptr)
     // , thread_(std::bind(&EventLoopThread::threadFunc, this), name) // bind是C++11的遗留物, 不如lambda
-    , thread_([this] {threadFunc(); }, name)
+    , thread_([this] {this->threadFunc(); }, name)
     , mutex_() // 不写也行, 它会默认初始化的.
     , cond_() // 不写也行, 它会默认初始化的.
     , callback_(std::move(cb))

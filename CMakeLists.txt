@@ -14,10 +14,8 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -fno-inline") # 我添加的, debug默认只�
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 #示例静态库的输出
 #set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib) # 设置静态库输出路径
-#设置全局链接库
-set(LIBS
-    pthread
-)
+#设置全局链接库, # 在 Glibc 2.34（发布于 2021 年 8 月）起, -lpthread就不需要加, 整合到libc.so.6中了.
+set(LIBS pthread)
 
 #添加子目录
 add_subdirectory(src)

@@ -26,7 +26,7 @@ public:
     [[nodiscard]] std::vector<EventLoop *> getAllLoops(); // 获取所有的EventLoop
 
     bool started() const { return started_; } // 是否已经启动
-    const std::string name() const { return name_; } // 获取名字
+    const std::string& name() const { return name_; } // 获取名字
 
 private:
     EventLoop *baseLoop_; // 用户使用muduo创建的loop 如果线程数为1 那直接使用用户创建的loop 否则创建多EventLoop

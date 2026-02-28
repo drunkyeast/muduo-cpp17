@@ -32,7 +32,7 @@ void EventLoopThreadPool::start(ThreadInitCallback cb)
 
     if (numThreads_ == 0 && cb) // 关于baseLoop_是main函数中的Loop的多个身份的一个, 在EventLoopThreadPool中叫做baseLoop_, 在acceptor中有, 在main函数中也有... 从TcpServer的构造函数可以看出.
     { // 如果numThreads_ == 0, 那么那个主Reactor线程就要完成从Reactor的事情, 调用一次从Reactor相关的ThreadInitCallback的回调. 搜嘎搜嘎
-        cb(baseLoop_);
+        cb(baseLoop_); // 没用上啊, testserver没设置
     }
 }
 

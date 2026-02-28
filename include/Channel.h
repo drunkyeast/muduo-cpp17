@@ -75,7 +75,7 @@ private:
     int revents_;     // Poller返回的具体发生的事件
     int index_;       // used by poller
 
-    std::weak_ptr<void> tie_; // 防止手动remove channel后, 还使用channel. void泛型持有.
+    std::weak_ptr<void> tie_; // 与TcpConnection绑定, TcpConnection和channel的是否要跨线程, 线程不安全. 过程中channel因为epoll_wait还可能去处理消息, 要判断TcpConnection是否释放, 释放了就不能去做事了.
     bool tied_;
 
     // 因为channel通道里可获知fd最终发生的具体的事件revents，所以它负责调用具体事件的回调操作.
