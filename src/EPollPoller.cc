@@ -37,7 +37,7 @@ EPollPoller::~EPollPoller()
 void EPollPoller::updateChannel(Channel *channel) // 这是修改Channel感兴趣的事情. Channel会修改events_成员变量, 就是它感兴趣的事情.
 {
     const int index = channel->index();
-    LOG_INFO("func=%s => fd=%d events=%d index=%d\n", __FUNCTION__, channel->fd(), channel->events(), index);
+    LOG_DEBUG("func=%s => fd=%d events=%d index=%d\n", __FUNCTION__, channel->fd(), channel->events(), index);
 
     if (index == kNew || index == kDeleted) // 未被注册或者已经被Poller删除.
     {
@@ -72,7 +72,7 @@ void EPollPoller::removeChannel(Channel *channel)
     int fd = channel->fd();
     channels_.erase(fd);
 
-    LOG_INFO("func=%s => fd=%d\n", __FUNCTION__, fd);
+    LOG_DEBUG("func=%s => fd=%d\n", __FUNCTION__, fd);
 
     int index = channel->index();
     if (index == kAdded)
@@ -86,7 +86,7 @@ void EPollPoller::removeChannel(Channel *channel)
 Timestamp EPollPoller::poll(int timeoutMs, ChannelList *activeChannels)
 {
     // 由于频繁调用poll 实际上应该用LOG_DEBUG输出日志更为合理 当遇到并发场景 关闭DEBUG日志提升效率
-    LOG_INFO("func=%s => fd total count:%lu\n", __FUNCTION__, channels_.size());
+    LOG_DEBUG("func=%s => fd total count:%lu\n", __FUNCTION__, channels_.size());
 
     // 这里用&*events_.begin(), 不错. events_是一个vector.   但也可以用events_.data().
     int numEvents = ::epoll_wait(epollfd_, &*events_.begin(), static_cast<int>(events_.size()), timeoutMs);
@@ -95,7 +95,7 @@ Timestamp EPollPoller::poll(int timeoutMs, ChannelList *activeChannels)
 
     if (numEvents > 0)
     {
-        LOG_INFO("%d events happend\n", numEvents); // LOG_DEBUG最合理
+        LOG_DEBUG("%d events happend\n", numEvents);
         fillActiveChannels(numEvents, activeChannels); // 每个事件 = 某个fd + 事件类型, 然后封装成Channel, 然后存到activeChannels中.
         if (numEvents == events_.size()) // 扩容操作, 因为有maxevents上限.
         {

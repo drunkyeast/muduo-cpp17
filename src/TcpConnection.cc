@@ -39,15 +39,12 @@ TcpConnection::TcpConnection(EventLoop *loop,
     , peerAddr_(peerAddr)
     , highWaterMark_(64 * 1024 * 1024) // 64M
 {
-    // 下面给channel设置相应的回调函数 poller给channel通知感兴趣的事件发生了 channel会回调相应的回调函数
-    channel_->setReadCallback(
-        std::bind(&TcpConnection::handleRead, this, std::placeholders::_1));
-    channel_->setWriteCallback(
-        std::bind(&TcpConnection::handleWrite, this));
-    channel_->setCloseCallback(
-        std::bind(&TcpConnection::handleClose, this));
-    channel_->setErrorCallback(
-        std::bind(&TcpConnection::handleError, this));
+    channel_->setReadCallback([this](Timestamp receiveTime){
+        handleRead(receiveTime);
+    });
+    channel_->setWriteCallback([this] { handleWrite(); });
+    channel_->setCloseCallback([this] { handleClose(); });
+    channel_->setErrorCallback([this] { handleError(); });
 
     LOG_INFO("TcpConnection::ctor[%s] at fd=%d\n", name_.c_str(), sockfd);
     socket_->setKeepAlive(true);
@@ -132,11 +129,10 @@ void TcpConnection::send(Buffer* buf)
         else
         {
             // 跨线程：swap 把 buffer 内容"偷"走，O(1) // 经典swap惯用法.
-            auto ptr = shared_from_this();
             Buffer tempBuf;
             tempBuf.swap(*buf);  // 只交换3个字段，不拷贝数据
-            loop_->runInLoop([ptr, buf = std::move(tempBuf)]() {
-                ptr->sendInLoop(buf.peek(), buf.readableBytes());
+            loop_->runInLoop([self = shared_from_this(), buf = std::move(tempBuf)] {
+                self->sendInLoop(buf.peek(), buf.readableBytes());
             });
         }
     }
@@ -154,6 +150,7 @@ void TcpConnection::sendInLoop(const void *data, size_t len)
     if (state_ == kDisconnected) // 之前调用过该connection的shutdown 不能再进行发送了
     {
         LOG_ERROR("disconnected, give up writing");
+        return;
     }
 
     // if no thing in output queue, try writing directly.
@@ -166,8 +163,11 @@ void TcpConnection::sendInLoop(const void *data, size_t len)
             if (remaining == 0 && writeCompleteCallback_)
             {
                 // 既然在这里数据全部发送完成，就不用再给channel设置epollout事件了
-                loop_->queueInLoop(
-                    std::bind(writeCompleteCallback_, shared_from_this()));
+                // loop_->queueInLoop(
+                //     std::bind(writeCompleteCallback_, shared_from_this()));
+                loop_->queueInLoop([self = shared_from_this()] {
+                    self->writeCompleteCallback_(self);
+                });
             }
         }
         else // nwrote < 0
@@ -194,8 +194,9 @@ void TcpConnection::sendInLoop(const void *data, size_t len)
         size_t oldLen = outputBuffer_.readableBytes();
         if (oldLen + remaining >= highWaterMark_ && oldLen < highWaterMark_ && highWaterMarkCallback_) // testserver中没设置这个回调, 程序比较简单, 不用也罢. 但  在生产环境中，不设置高水位回调是一个巨大的隐患，可能会导致内存耗尽（OOM）。
         {
-            loop_->queueInLoop(
-                std::bind(highWaterMarkCallback_, shared_from_this(), oldLen + remaining));
+            loop_->queueInLoop([self = shared_from_this(), waterMark = oldLen + remaining] {
+                self->highWaterMarkCallback_(self, waterMark);
+            });
         }
         outputBuffer_.append((char *)data + nwrote, remaining);
         if (!channel_->isWriting())
@@ -210,8 +211,8 @@ void TcpConnection::shutdown()
     if (state_ == kConnected)
     {
         setState(kDisconnecting);
-        loop_->runInLoop(
-            std::bind(&TcpConnection::shutdownInLoop, this));
+        // loop_->runInLoop([this] { shutdownInLoop(); }); // 这里跨线程了, 要用shared_from_this保护.
+        loop_->runInLoop([self = shared_from_this()] { self->shutdownInLoop(); });
     }
 }
 
@@ -293,8 +294,9 @@ void TcpConnection::handleWrite()
                 {
                     // TcpConnection对象在其所在的subloop中 向pendingFunctors_中加入回调
                     // 质疑: 这儿有必要这样写吗? 线程切换问题?
-                    loop_->queueInLoop(
-                        std::bind(writeCompleteCallback_, shared_from_this()));
+                    loop_->queueInLoop([self = shared_from_this()] {
+                        self->writeCompleteCallback_(self);
+                    });
                 }
                 if (state_ == kDisconnecting)
                 {

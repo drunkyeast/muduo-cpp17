@@ -24,7 +24,7 @@ Acceptor::Acceptor(EventLoop *loop, const InetAddress &listenAddr, bool reusepor
     , listenning_(false)
 {
     acceptSocket_.setReuseAddr(true);
-    acceptSocket_.setReusePort(true);
+    acceptSocket_.setReusePort(reuseport);
     acceptSocket_.bindAddress(listenAddr); // socket -> bind -> listen(下面有), 具体是TcpServer构造函数中创建Acceptor, 完成socket->bind. 然后TcpServer.start里面用mainloop来执行listen.
     
     // 下面这块逻辑都是以前写Channel/Poller/EventLoop里面的. 这里只是设置了handleRead这个回调.

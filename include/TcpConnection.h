@@ -39,6 +39,12 @@ public:
     bool connected() const { return state_ == kConnected; }
 
     // 发送数据
+    // 故事线如下: 
+    // 1. 一开始只写了const string&, 这样不能移动啊, 
+    // 2. 改成string版本+move, 但字符串字面量不是右值会触发拷贝, 且传左值时要手动move.
+    // 3. 改成string_view(这样可以接受字符串字面量, 避免拷贝), 但不能移动了, 所以还需要string&&. 但是字符串字面量, 会有二义性
+    // 4. 为了解决二义性, 再写一个const char* 接口拦截字符串字面量, 就没有二义性了.
+    // 5. 但是const char*, string_view, string&& 一共有3个接口, 好烦, 所以用了万能引用+完美转发.🥰🥰
     // 完美转发模板，处理所有字符串类型（左值、右值、字面量）,把send(const char*), send(string&&), send(string), send(string_view)全部统一了起来.
     template <typename StringLike>
     void send(StringLike&& message)
@@ -69,7 +75,9 @@ public:
             }
         }
     }
+    // 再后来补充了这两个接口, 第一个转化成string_view复用就好了.🥰🥰
     void send(const void* data, size_t len);
+    // 第二个, 增加Buffer的swap逻辑, 因为Buffer底层是vector<char>, 最后可以用空Buffer来swap窃取资源. 这是真的极致优化了. 🥰🥰
     void send(Buffer* buf);
     void sendFile(int fileDescriptor, off_t offset, size_t count); 
     
@@ -77,16 +85,16 @@ public:
     void shutdown();
 
     // 这一坨是上层TcpServer传递给TcpConnection的.
-    void setConnectionCallback(const ConnectionCallback &cb)
-    { connectionCallback_ = cb; }
-    void setMessageCallback(const MessageCallback &cb)
-    { messageCallback_ = cb; }
-    void setWriteCompleteCallback(const WriteCompleteCallback &cb)
-    { writeCompleteCallback_ = cb; }
-    void setCloseCallback(const CloseCallback &cb)
-    { closeCallback_ = cb; }
-    void setHighWaterMarkCallback(const HighWaterMarkCallback &cb, size_t highWaterMark)
-    { highWaterMarkCallback_ = cb; highWaterMark_ = highWaterMark; }
+    void setConnectionCallback(ConnectionCallback cb)
+    { connectionCallback_ = std::move(cb); }
+    void setMessageCallback(MessageCallback cb)
+    { messageCallback_ = std::move(cb); }
+    void setWriteCompleteCallback(WriteCompleteCallback cb)
+    { writeCompleteCallback_ = std::move(cb); }
+    void setCloseCallback(CloseCallback cb)
+    { closeCallback_ = std::move(cb); }
+    void setHighWaterMarkCallback(HighWaterMarkCallback cb, size_t highWaterMark)
+    { highWaterMarkCallback_ = std::move(cb); highWaterMark_ = highWaterMark; }
 
     // 连接建立
     void connectEstablished();

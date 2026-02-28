@@ -21,9 +21,7 @@ TcpServer::TcpServer(EventLoop *loop,
     : loop_(CheckLoopNotNull(loop))
     , ipPort_(listenAddr.toIpPort())
     , name_(nameArg)
-    // , acceptor_(new Acceptor(loop, listenAddr, option == kReusePort))
-    // , threadPool_(new EventLoopThreadPool(loop, name_))
-    , acceptor_(std::make_unique<Acceptor>(loop, listenAddr, option == kReusePort)) // make_unique 和 make_shared 返回的都是右值, 不用move
+    , acceptor_(std::make_unique<Acceptor>(loop, listenAddr, option == Option::kReusePort)) // make_unique 和 make_shared 返回的都是右值, 不用move
     , threadPool_(std::make_shared<EventLoopThreadPool>(loop, name_))
     , connectionCallback_()
     , messageCallback_()
@@ -34,7 +32,7 @@ TcpServer::TcpServer(EventLoop *loop,
     // acceptor_->setNewConnectionCallback(
     //     std::bind(&TcpServer::newConnection, this, std::placeholders::_1, std::placeholders::_2));
     acceptor_->setNewConnectionCallback([this](int sockfd, const InetAddress &peerAddr) {
-        this->newConnection(sockfd, peerAddr);
+        newConnection(sockfd, peerAddr);
     });
 }
 
@@ -50,7 +48,7 @@ TcpServer::~TcpServer()
         // conn->getLoop()->runInLoop(
         //     std::bind(&TcpConnection::connectDestroyed, conn)); // 这个bind会拷贝conn参数, 导致引用计数+1.
         // 这里又要从主线程切换subLoop线程去删除, 践行one loop per thread.
-        conn->getLoop()->runInLoop([conn](){
+        conn->getLoop()->runInLoop([conn] {
             conn->connectDestroyed();
         });
 
@@ -65,7 +63,7 @@ TcpServer::~TcpServer()
 // 设置底层subloop的个数
 void TcpServer::setThreadNum(int numThreads)
 {
-    int numThreads_=numThreads;
+    numThreads_=numThreads;
     threadPool_->setThreadNum(numThreads_);
 }
 
@@ -81,8 +79,8 @@ void TcpServer::start()
     {
         threadPool_->start(threadInitCallback_);    // 启动底层的loop线程池
         // loop_->runInLoop(std::bind(&Acceptor::listen, acceptor_.get())); //让这个EventLoop，也就是mainloop来执行Acceptor的listen函数，开启服务端监听
-        loop_->runInLoop([this](){
-            this->acceptor_->listen();
+        loop_->runInLoop([this] {
+            acceptor_->listen();
         });
     }
 }
@@ -130,13 +128,13 @@ void TcpServer::newConnection(int sockfd, const InetAddress &peerAddr) // 注意
     // 2. 客户端断开连接, epoll_wait发现的事EPOLLIN事件, channel发生readCallback, 如果读取为0, 就表明客户端关闭, 然后调用handleClose. TcpConnection里面的handleRead触发了handleClose
     // 3. 其他情况, 例如RST, epoll_wait发现是EPOLLHUP事件, 直接触发handleClose的回调.
     conn->setCloseCallback([this](const TcpConnectionPtr &conn) { // 注意, 这儿的conn与外面的conn重名了, 小心
-        this->removeConnection(conn);
+        removeConnection(conn);
     });
 
     // 这个runInLoop就是切换线程执行回调, 从主Reactor/主线程/mainLoop 切换 到从Reactor/subLoop, 之前也讲过, "切换线程"这个词很准确啊. 都以前讲EventLoop好好讨论过的逻辑.
     // ioLoop->runInLoop(
     //     std::bind(&TcpConnection::connectEstablished, conn));
-    ioLoop->runInLoop([conn]() {
+    ioLoop->runInLoop([conn] {
         conn->connectEstablished();
     });
 }
@@ -145,8 +143,8 @@ void TcpServer::removeConnection(const TcpConnectionPtr &conn)
 {
     // loop_->runInLoop(
     //     std::bind(&TcpServer::removeConnectionInLoop, this, conn));
-    loop_->runInLoop([this, conn](){
-        this->removeConnectionInLoop(conn);
+    loop_->runInLoop([this, conn] {
+        removeConnectionInLoop(conn);
     });
 }
 
@@ -159,7 +157,7 @@ void TcpServer::removeConnectionInLoop(const TcpConnectionPtr &conn)
     EventLoop *ioLoop = conn->getLoop();
     // ioLoop->queueInLoop(
     //     std::bind(&TcpConnection::connectDestroyed, conn));
-    ioLoop->queueInLoop([conn](){
+    ioLoop->queueInLoop([conn] {
         conn->connectDestroyed();
     });
 }

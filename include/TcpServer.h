@@ -25,7 +25,7 @@ class TcpServer : noncopyable
 public:
     using ThreadInitCallback = std::function<void(EventLoop *)>;
 
-    enum Option
+    enum class Option
     {
         kNoReusePort,//不允许重用本地端口
         kReusePort,//允许重用本地端口
@@ -34,13 +34,13 @@ public:
     TcpServer(EventLoop *loop,
               const InetAddress &listenAddr,
               const std::string &nameArg,
-              Option option = kNoReusePort);
+              Option option = Option::kNoReusePort);
     ~TcpServer();
 
-    void setThreadInitCallback(const ThreadInitCallback &cb) { threadInitCallback_ = cb; } // 没用到
-    void setConnectionCallback(const ConnectionCallback &cb) { connectionCallback_ = cb; } // example的main中只用到了这几个, 连接建立和断开都是这个.
-    void setMessageCallback(const MessageCallback &cb) { messageCallback_ = cb; } // example的main中只用到了这几个
-    void setWriteCompleteCallback(const WriteCompleteCallback &cb) { writeCompleteCallback_ = cb; } // 没用到, 意义在于传输1GB这样的大文件
+    void setThreadInitCallback(ThreadInitCallback cb) { threadInitCallback_ = std::move(cb); } // 没用到
+    void setConnectionCallback(ConnectionCallback cb) { connectionCallback_ = std::move(cb); } // example的main中只用到了这几个, 连接建立和断开都是这个.
+    void setMessageCallback(MessageCallback cb) { messageCallback_ = std::move(cb); } // example的main中只用到了这几个
+    void setWriteCompleteCallback(WriteCompleteCallback cb) { writeCompleteCallback_ = std::move(cb); } // 没用到, 意义在于传输1GB这样的大文件
 
     // 设置底层subloop的个数
     void setThreadNum(int numThreads); // example的main中只用到了这几个

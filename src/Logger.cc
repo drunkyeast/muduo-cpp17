@@ -28,5 +28,6 @@ void Logger::log(LogLevel level, const char* msg)
         break;
     }
 
-    std::cout << pre << Timestamp::now().toString() << " : " << msg << '\n';
+    // std::cout << pre << Timestamp::now().toString() << " : " << msg << '\n'; // 下面性能更高.
+    fprintf(stdout, "%s%s : %s\n", pre, Timestamp::now().toString().c_str(), msg);
 }

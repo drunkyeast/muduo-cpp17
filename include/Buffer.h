@@ -111,8 +111,9 @@ public:
     }
 private:
     // vector底层数组首元素的地址 也就是数组的起始地址
-    char *begin() { return &*buffer_.begin(); }
-    const char *begin() const { return &*buffer_.begin(); }
+    // return &*buffer_.begin();  改成用.data了.
+    char *begin() { return buffer_.data(); }
+    const char *begin() const { return buffer_.data(); }
 
     void makeSpace(size_t len)
     {

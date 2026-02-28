@@ -65,8 +65,8 @@ void Channel::handleEvent(Timestamp receiveTime)
 // 根据poller通知的channel发生的具体事件, 由channel负责调用具体的回调操作  调试还可以用__FILE__, __LINE__, __func__
 void Channel::handleEventWithGuard(Timestamp receiveTime)
 {
-    LOG_INFO("[%s:%d]%s\n", __FILE__, __LINE__, __func__);
-    LOG_INFO("channel handleEvent revents:%d\n", revents_);
+    LOG_DEBUG("[%s:%d]%s\n", __FILE__, __LINE__, __func__);
+    LOG_DEBUG("channel handleEvent revents:%d\n", revents_);
     // 关闭
     if ((revents_ & EPOLLHUP) && !(revents_ & EPOLLIN)) // 当发生挂起事件（如对端RST或连接意外断开）,客户端主动断开连接不会触发这个. 最后触发handleClose.
     {
