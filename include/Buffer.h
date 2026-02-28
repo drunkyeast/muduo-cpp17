@@ -70,6 +70,7 @@ public:
     }
 
     // 把onMessage函数上报的Buffer数据 转成string类型的数据返回
+    // 这儿看起来string反复构造了好几次, 但AI都说编译器会优化NRVO, 这个就不管了.
     std::string retrieveAllAsString() { return retrieveAsString(readableBytes()); }
     std::string retrieveAsString(size_t len)
     {
@@ -102,6 +103,12 @@ public:
     // 通过fd发送数据
     ssize_t writeFd(int fd, int *saveErrno);
 
+    void swap(Buffer& rhs)
+    {
+        buffer_.swap(rhs.buffer_);
+        std::swap(readerIndex_, rhs.readerIndex_);
+        std::swap(writerIndex_, rhs.writerIndex_);
+    }
 private:
     // vector底层数组首元素的地址 也就是数组的起始地址
     char *begin() { return &*buffer_.begin(); }
@@ -129,6 +136,7 @@ private:
             writerIndex_ = readerIndex_ + readable;
         }
     }
+
 
     std::vector<char> buffer_;
     size_t readerIndex_;

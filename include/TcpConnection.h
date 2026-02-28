@@ -3,15 +3,17 @@
 #include <memory>
 #include <string>
 #include <atomic>
+#include <string_view>
 
 #include "noncopyable.h"
 #include "InetAddress.h"
 #include "Callbacks.h"
 #include "Buffer.h"
 #include "Timestamp.h"
+#include "EventLoop.h"
 
 class Channel;
-class EventLoop;
+// class EventLoop; // 写了模板函数, 不能前置申明, 而是要include了.
 class Socket;
 
 /**
@@ -37,7 +39,38 @@ public:
     bool connected() const { return state_ == kConnected; }
 
     // 发送数据
-    void send(std::string buf);
+    // 完美转发模板，处理所有字符串类型（左值、右值、字面量）,把send(const char*), send(string&&), send(string), send(string_view)全部统一了起来.
+    template <typename StringLike>
+    void send(StringLike&& message)
+    {
+        if (state_ == kConnected)
+        {
+            if (loop_->isInLoopThread())
+            {
+                // 【情况 A：当前 IO 线程】
+                // 无论是 string 左值、右值 还是 const char*，
+                // 都能极其轻量地隐式构造为 string_view（仅仅赋值一个指针和长度）。
+                // 绝对的 0 拷贝！
+                std::string_view sv(message); 
+                sendInLoop(sv.data(), sv.size());
+            }
+            else
+            {
+                // 【情况 B：跨线程投递】
+                // 重点来了！这行代码是性能分水岭：
+                // 1. 如果 message 是右值 string (std::move传进来的)，这里触发 Move 构造，0 拷贝！
+                // 2. 如果 message 是左值 string 或 const char*，这里触发 Copy 构造/分配。这是跨线程保证内存安全的必须代价。
+                std::string msg_to_pass(std::forward<StringLike>(message));
+
+                auto ptr = shared_from_this(); // 保护连接对象的生命周期
+                loop_->runInLoop([ptr, msg = std::move(msg_to_pass)]() {
+                    ptr->sendInLoop(msg.data(), msg.size());
+                });
+            }
+        }
+    }
+    void send(const void* data, size_t len);
+    void send(Buffer* buf);
     void sendFile(int fileDescriptor, off_t offset, size_t count); 
     
     // 关闭半连接

@@ -2,6 +2,8 @@
 
 #include "TcpServer.h"
 #include "Logger.h"
+#include <string>
+#include <cstring>
 
 class EchoServer
 {
@@ -43,8 +45,11 @@ private:
     void onMessage(const TcpConnectionPtr &conn, Buffer *buf, Timestamp time)
     {
         std::string msg = buf->retrieveAllAsString();
-        conn->send(std::move(msg));
-        conn->send("hello");
+        char test[] = "test\n";
+        conn->send(test, strlen(test));
+        conn->send(msg); // stirng左值
+        conn->send(std::move(msg)); // string右值
+        conn->send("hello"); // const char*
         // conn->shutdown();  // send一次就shutdown吗? 这是短连接.
         // shutdown() 只是发送了 FIN 包，它本身不会立即导致本地产生 EPOLLHUP 事件。底层是EPOLLIN，最后read返回0，从而执行handleRead->handleClose->closeCallback_。
     }

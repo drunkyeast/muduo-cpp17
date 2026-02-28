@@ -88,24 +88,56 @@ void onMessage(...) {
 4. 最后是buf的生命周期问题, 施磊老师重构的muduo, 没考虑清楚这一点, 应该参考muduo源码, buf要额外处理. 我把buf命名成message, 并已处理.
 5. isInLoopThread()的逻辑已经在runInLoop中有了, 不可以直接调用loop_->runInLoop吗? 我一开始就是从这个逻辑点, 延伸出这么一大片逻辑思考. 这里这样做是性能优化.
 */
-void TcpConnection::send(std::string message)
+
+// 这段代码终究是错付了, 字符串字面量, string左值, string右值, string_view等情况. 要覆盖所有情况, 需要写const char*, string&&, string_view这三种情况, 细节我不说了. 后面直接统一成完美引用, 模板函数.
+// void TcpConnection::send(std::string message)
+// {
+//     if (state_ == kConnected)
+//     {
+//         if (loop_->isInLoopThread())
+//         {
+//             // 在当前线程，直接调用 sendInLoop
+//             sendInLoop(message.data(), message.size()); // data和c_str都一样, 后者c风格. data语义更明确.
+//         }
+//         else
+//         {
+//             // 跨线程调用：必须把 message 移动到 Lambda 中！
+//             // lambda的[this, msg = std::move(message)]里面相当于自带auto. [&]全捕获几乎不会影响性能, 只是按需捕获更安全.
+//             auto ptr = shared_from_this(); // 跨线程, cb在排队执行, 如果客户端断开连接, TcpConnection对象销毁了, 就不能执行了.
+//             loop_->runInLoop([ptr, msg = std::move(message)](){
+//                 ptr->sendInLoop(msg.data(), msg.size());
+//             });
+//             // loop_->runInLoop(
+//             //     std::bind(&TcpConnection::sendInLoop, this, message.c_str(), message.size()));
+//         }
+//     }
+// }
+
+void TcpConnection::send(const void* data, size_t len) 
+{
+    send(std::string_view(static_cast<const char*>(data), len));
+}
+
+// 极致优化, 陈硕优化未遂, 可能是当年的bind局限性.
+void TcpConnection::send(Buffer* buf)
 {
     if (state_ == kConnected)
     {
         if (loop_->isInLoopThread())
         {
-            // 在当前线程，直接调用 sendInLoop
-            sendInLoop(message.data(), message.size()); // data和c_str都一样, 后者c风格. data语义更明确.
+            // 同线程：零拷贝，直接用裸指针
+            sendInLoop(buf->peek(), buf->readableBytes());
+            buf->retrieveAll();
         }
         else
         {
-            // 跨线程调用：必须把 message 移动到 Lambda 中！
-            // lambda的[this, msg = std::move(message)]里面相当于自带auto. [&]全捕获几乎不会影响性能, 只是按需捕获更安全.
-            loop_->runInLoop([this, msg = std::move(message)](){
-                this->sendInLoop(msg.data(), msg.size());
+            // 跨线程：swap 把 buffer 内容"偷"走，O(1) // 经典swap惯用法.
+            auto ptr = shared_from_this();
+            Buffer tempBuf;
+            tempBuf.swap(*buf);  // 只交换3个字段，不拷贝数据
+            loop_->runInLoop([ptr, buf = std::move(tempBuf)]() {
+                ptr->sendInLoop(buf.peek(), buf.readableBytes());
             });
-            // loop_->runInLoop(
-            //     std::bind(&TcpConnection::sendInLoop, this, message.c_str(), message.size()));
         }
     }
 }
