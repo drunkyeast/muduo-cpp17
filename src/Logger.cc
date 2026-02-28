@@ -9,9 +9,9 @@ Logger &Logger::instance() // 又是一个单例
     return logger;
 }
 
-void Logger::log(LogLevel level, std::string_view msg)
+void Logger::log(LogLevel level, const char* msg)
 {
-    std::string_view pre;
+    const char* pre = nullptr;
     switch (level)
     {
     case LogLevel::INFO:

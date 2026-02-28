@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdio> // 用到了snprintf
-#include <string_view>
 
 #include "noncopyable.h"
 
@@ -57,5 +56,5 @@ class Logger : noncopyable
 {
 public:
     static Logger &instance();
-    void log(LogLevel level, std::string_view msg);
+    void log(LogLevel level, const char* msg);
 };
