@@ -1,9 +1,8 @@
 #include <functional>
 #include <string>
-#include <errno.h>
+#include <cerrno>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <string.h>
 #include <netinet/tcp.h>
 #include <sys/sendfile.h>
 #include <fcntl.h> // for open
@@ -33,8 +32,8 @@ TcpConnection::TcpConnection(EventLoop *loop,
     , name_(nameArg)
     , state_(kConnecting)
     , reading_(true)
-    , socket_(new Socket(sockfd))
-    , channel_(new Channel(loop, sockfd))
+    , socket_(std::make_unique<Socket>(sockfd))
+    , channel_(std::make_unique<Channel>(loop, sockfd))
     , localAddr_(localAddr)
     , peerAddr_(peerAddr)
     , highWaterMark_(64 * 1024 * 1024) // 64M

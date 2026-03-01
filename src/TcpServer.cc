@@ -1,5 +1,4 @@
 #include <functional>
-#include <string.h>
 
 #include "TcpServer.h"
 #include "Logger.h"
@@ -38,11 +37,9 @@ TcpServer::TcpServer(EventLoop *loop,
 
 TcpServer::~TcpServer()
 {
-    for(auto &item : connections_)
+    for(auto &[name, connPtr] : connections_) // C++17 结构化绑定
     {
-        // TcpConnectionPtr conn(item.second);
-        // item.second.reset();    // 把原始的智能指针复位 让栈空间的TcpConnectionPtr conn指向该对象 当conn出了其作用域 即可释放智能指针指向的对象
-        TcpConnectionPtr conn(std::move(item.second)); // 这样就不需要手动reset了.
+        TcpConnectionPtr conn(std::move(connPtr));
 
         // 销毁连接
         // conn->getLoop()->runInLoop(
@@ -100,8 +97,7 @@ void TcpServer::newConnection(int sockfd, const InetAddress &peerAddr) // 注意
              name_.c_str(), connName.c_str(), peerAddr.toIpPort().c_str());
     
     // 通过sockfd获取其绑定的本机的ip地址和端口信息
-    sockaddr_in local;
-    ::memset(&local, 0, sizeof(local));
+    sockaddr_in local{};
     socklen_t addrlen = sizeof(local);
     if(::getsockname(sockfd, (sockaddr *)&local, &addrlen) < 0) // peerAddr是对端的IP+Port信息, 这里是获取sockfd绑定的本地的地址信息
     { // 这个与listen的IP地址也不一样, 它可能是0.0.0.0这样的通配符, 这个是返回实际的网卡上的IP.

@@ -34,7 +34,7 @@ thread_local EventLoop *t_loopInThisThread = nullptr;
 └─ 文件锁 (file lock)
 */
 // 定义默认的Poller IO复用接口的超时时间
-const int kPollTimeMs = 10000; // 10000毫秒 = 10秒钟
+constexpr int kPollTimeMs = 10000; // 10000毫秒 = 10秒钟
 
 /* 创建线程之后主线程和子线程谁先运行是不确定的。
  * 通过一个eventfd在线程之间传递数据的好处是多个线程无需上锁就可以实现同步。
@@ -69,7 +69,7 @@ EventLoop::EventLoop()
     , threadId_(CurrentThread::tid()) // good
     , poller_(Poller::newDefaultPoller(this))
     , wakeupFd_(createEventfd())
-    , wakeupChannel_(new Channel(this, wakeupFd_))
+    , wakeupChannel_(std::make_unique<Channel>(this, wakeupFd_))
 {
     LOG_DEBUG("EventLoop created %p in thread %d\n", this, threadId_);
     if (t_loopInThisThread)
@@ -147,7 +147,10 @@ void EventLoop::doPendingFunctors()
     std::vector<Functor> functors;
     callingPendingFunctors_ = true;
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        // C++17 scoped_lock: 替代 lock_guard, 单mutex时性能相同(编译器会退化为lock_guard等价实现),
+        // 优势在于支持同时锁多个mutex防死锁. CTAD省去<std::mutex>模板参数.
+        // 注: unique_lock 有额外开销(存储是否持有锁的bool + 支持手动unlock), 仅在需要条件变量wait或手动unlock时使用.
+        std::scoped_lock lock(mutex_);
         functors.swap(pendingFunctors_); // 交换的方式减少了锁的临界区范围 提升效率 同时避免了死锁 如果执行functor()在临界区内 且functor()中调用queueInLoop()就会产生死锁
     }
 

@@ -2,12 +2,11 @@
 
 #include <vector>
 #include <unordered_map>
+#include <memory>
 
 #include "noncopyable.h"
 #include "Timestamp.h"
 #include "Channel.h"
-
-class Channel;
 class EventLoop;
 
 // muduo库中多路事件分发器demultiplex的核心IO复用模块
@@ -31,7 +30,7 @@ public:
     }
 
     // EventLoop可以通过该接口获取默认的IO复用的具体实现
-    static Poller *newDefaultPoller(EventLoop *loop);
+    static std::unique_ptr<Poller> newDefaultPoller(EventLoop *loop);
 
 protected:
     // map的key:sockfd value:sockfd所属的channel通道类型

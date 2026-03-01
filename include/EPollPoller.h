@@ -27,9 +27,8 @@ public:
     void removeChannel(Channel *channel) override; // epoll_ctl(epollfd_, EPOLL_CTL_DEL, fd, &event)
 
 private:
-    // static const int kInitEventListSize = 16;     // 对于int, 这些写法都行.
-    // static constexpr int kInitEventListSize = 16; // 对于int, 这些写法都行.
-    inline static const int kInitEventListSize = 16; // 对于int, 这些写法都行.
+    // C++17 static constexpr 隐式 inline, 显式保留 inline 为了可读性一致
+    inline static constexpr int kInitEventListSize = 16;
 
     // 填写活跃的连接
     void fillActiveChannels(int numEvents, ChannelList *activeChannels) const;

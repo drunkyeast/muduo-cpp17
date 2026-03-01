@@ -1,10 +1,10 @@
-#include <string.h>
+#include <cstring>
 
 #include "InetAddress.h"
 
 InetAddress::InetAddress(uint16_t port, const std::string &ip)
+    : addr_{} // 值初始化, 全部清零, 替代memset
 {
-    ::memset(&addr_, 0, sizeof(addr_));
     addr_.sin_family = AF_INET;
     addr_.sin_port = ::htons(port);                          // 本地字节序转网络字节序
     ::inet_pton(AF_INET, ip.c_str(), &addr_.sin_addr);       // 点分十进制 -> 二进制

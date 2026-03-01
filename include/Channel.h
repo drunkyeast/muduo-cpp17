@@ -61,13 +61,12 @@ private:
     void update();
     void handleEventWithGuard(Timestamp receiveTime); // 就是handleEvent的一部分, 底层
 
-    // static const int x = 0;早在C++98就可以. 但这个特例只针对 int、char 这种整型. 
-    // 我改成inline更通用, 1. int换成string也可以  2. const去掉也可以. 更通用. 
-    // constexpr能自带inline, 但不能作用于string. 所以我下面这写法是更通用的.
-    // inline static const std::string t1 = "hello"; // 这是一个例子
-    inline static const int kNoneEvent = 0; //空事件
-    inline static const int kReadEvent = EPOLLIN | EPOLLPRI; //读事件 // EPOLLIN是: 只有数据到达时才触发 // 0x00000011
-    inline static const int kWriteEvent  = EPOLLOUT; //写事件 // EPOLLOUT是: 只要发送缓冲区有空间就触发!!! // 0x00000100
+    // C++17 static constexpr 隐式 inline, 显式写 inline 纯粹为了可读性上的一致.
+    // 书写顺序惯例: inline → static → constexpr (→ const), 即 "链接属性 → 存储属性 → 值属性 → cv限定".
+    // 若类型换成 std::string 等非字面量类型, constexpr 不可用, 需退化为 inline static const.
+    inline static constexpr int kNoneEvent = 0;
+    inline static constexpr int kReadEvent = EPOLLIN | EPOLLPRI;
+    inline static constexpr int kWriteEvent = EPOLLOUT;
 
     EventLoop *loop_; // 事件循环
     const int fd_;    // fd，Poller监听的对象

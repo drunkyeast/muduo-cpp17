@@ -7,6 +7,9 @@
 // LOG_INFO("%s %d", arg1, arg2)
 // ##__VA_ARGS__ 是 GCC 扩展，处理可变参数为空时消除多余逗号
 // do while(0) 使宏在语法上等价于一条语句，支持 LOG_INFO("x"); 这样的写法
+// TODO: 可用 C++17 变参模板 + fold expression 替代宏, 实现类型安全的日志:
+//   template<typename... Args> void log_info(std::string_view fmt, Args&&... args);
+//   或引入 fmtlib/std::format(C++20) 彻底告别 snprintf.
 #define LOG_INFO(logmsgFormat, ...)                                         \
     do                                                                      \
     {                                                                       \

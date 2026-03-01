@@ -1,9 +1,10 @@
-#include <stdlib.h>
+#include <cstdlib>
+#include <memory>
 
 #include "Poller.h"
 #include "EPollPoller.h"
 
-Poller *Poller::newDefaultPoller(EventLoop *loop)
+std::unique_ptr<Poller> Poller::newDefaultPoller(EventLoop *loop)
 {
     if (::getenv("MUDUO_USE_POLL"))
     {
@@ -11,6 +12,6 @@ Poller *Poller::newDefaultPoller(EventLoop *loop)
     }
     else
     {
-        return new EPollPoller(loop); // 生成epoll的实例
+        return std::make_unique<EPollPoller>(loop);
     }
 }

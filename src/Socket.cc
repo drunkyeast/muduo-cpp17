@@ -1,9 +1,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <string.h>
 #include <netinet/tcp.h>
-#include <sys/socket.h>
 
 #include "Socket.h"
 #include "Logger.h"
@@ -38,9 +36,8 @@ int Socket::accept(InetAddress *peeraddr) // 注意Acceptor构造函数中初始
      * Reactor模型 one loop per thread
      * poller + non-blocking IO
      **/
-    sockaddr_in addr;
+    sockaddr_in addr{}; // 更C++的初始化, 不需要memset和bzero
     socklen_t len = sizeof(addr);
-    ::memset(&addr, 0, sizeof(addr));
     // fixed : int connfd = ::accept(sockfd_, (sockaddr *)&addr, &len);
     // 传统写法: accept + fcntl设置阻塞等, accept4简化后可以写在一起.
     int connfd = ::accept4(sockfd_, (sockaddr *)&addr, &len, SOCK_NONBLOCK | SOCK_CLOEXEC);

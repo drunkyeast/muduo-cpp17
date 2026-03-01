@@ -1,6 +1,5 @@
-#include <errno.h>
+#include <cerrno>
 #include <unistd.h>
-#include <string.h>
 
 #include "EPollPoller.h"
 #include "Logger.h"
@@ -156,8 +155,7 @@ void EPollPoller::fillActiveChannels(int numEvents, ChannelList *activeChannels)
 // 更新channel通道 其实就是调用epoll_ctl add/mod/del
 void EPollPoller::update(int operation, Channel *channel) // 这是Channel中
 {
-    epoll_event event;
-    ::memset(&event, 0, sizeof(event));
+    epoll_event event{}; // 值初始化, 等价于memset零初始化, 更C++
     event.events = channel->events(); // 感兴趣的事件, 比特位表示
     event.data.fd = channel->fd();
     event.data.ptr = channel; // 这里是联合体, fd会被channel指针覆盖掉.
