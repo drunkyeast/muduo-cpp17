@@ -51,7 +51,7 @@ private:
 
     using ChannelList = std::vector<Channel *>;
 
-    std::atomic_bool looping_; // 原子操作 底层通过CAS实现
+    bool looping_; // 原子操作 底层通过CAS实现, 这个不需要原子操作, 已修改.
     std::atomic_bool quit_;    // 标识退出loop循环
 
     const pid_t threadId_; // 记录当前EventLoop是被哪个线程id创建的 即标识了当前EventLoop的所属线程id
@@ -64,7 +64,10 @@ private:
 
     ChannelList activeChannels_; // 返回Poller检测到当前有事件发生的所有Channel列表
 
-    std::atomic_bool callingPendingFunctors_; // 标识当前loop是否有需要执行的回调操作
+    // callingPendingFunctors_ 只在 loop 线程中读写 (doPendingFunctors 和 queueInLoop 的
+    // isInLoopThread 分支), 无跨线程竞争. 用 atomic 会在每轮事件循环产生 2 次 xchg 全内存
+    // 屏障 (seq_cst store), 单连接 ping pong 测试中开销约 19%. 原版 muduo 用的是 plain bool.
+    bool callingPendingFunctors_; // 标识当前loop是否有需要执行的回调操作, 普通bool就好了.
     std::vector<Functor> pendingFunctors_;    // 存储loop需要执行的所有回调操作
     std::mutex mutex_;                        // 互斥锁 用来保护上面vector容器的线程安全操作
 };

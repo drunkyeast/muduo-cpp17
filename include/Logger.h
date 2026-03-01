@@ -49,15 +49,19 @@
 
 enum class LogLevel
 {
-    INFO,
-    ERROR,
-    FATAL,
-    DEBUG,
+    DEBUG = 0,
+    INFO = 1,
+    ERROR = 2,
+    FATAL = 3,
 };
 
 class Logger : noncopyable
 {
 public:
     static Logger &instance();
+    void setLogLevel(LogLevel level) { logLevel_ = level; }
+    LogLevel logLevel() const { return logLevel_; }
     void log(LogLevel level, const char* msg);
+private:
+    LogLevel logLevel_ = LogLevel::INFO;
 };

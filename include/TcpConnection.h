@@ -38,6 +38,8 @@ public:
 
     bool connected() const { return state_ == kConnected; }
 
+    void setTcpNoDelay(bool on);
+
     // 发送数据
     // 故事线如下: 
     // 1. 一开始只写了const string&, 这样不能移动啊, 

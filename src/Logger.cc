@@ -11,6 +11,9 @@ Logger &Logger::instance() // 又是一个单例
 
 void Logger::log(LogLevel level, const char* msg)
 {
+    if (level < logLevel_)
+        return;
+
     const char* pre = nullptr;
     switch (level)
     {
@@ -28,6 +31,5 @@ void Logger::log(LogLevel level, const char* msg)
         break;
     }
 
-    // std::cout << pre << Timestamp::now().toString() << " : " << msg << '\n'; // 下面性能更高.
     fprintf(stdout, "%s%s : %s\n", pre, Timestamp::now().toString().c_str(), msg);
 }

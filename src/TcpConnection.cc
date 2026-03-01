@@ -54,6 +54,11 @@ TcpConnection::~TcpConnection()
     LOG_INFO("TcpConnection::dtor[%s] at fd=%d state=%d\n", name_.c_str(), channel_->fd(), (int)state_);
 }
 
+void TcpConnection::setTcpNoDelay(bool on)
+{
+    socket_->setTcpNoDelay(on);
+}
+
 /*
 我感觉send非常关键啊, 
 1. 目前代码中send是在OnMessage中调用的, 而OnMessage回调, 从main函数->TcpServer->TcpConnection->channel这样一层层传递回调的. 

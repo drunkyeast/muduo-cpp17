@@ -1,5 +1,7 @@
-AAA
-build
-.cache
-lib
+AAA/
+build/
+.cache/
+lib/
 example/testserver
+benchmark/build/
+benchmark/results/
