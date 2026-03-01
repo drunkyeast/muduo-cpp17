@@ -5,6 +5,7 @@
 
 #include "muduo/base/Date.h"
 #include <stdio.h>  // snprintf
+#include <ctime>    // struct tm (GCC 13+ no longer pulls it in implicitly)
 
 namespace muduo
 {

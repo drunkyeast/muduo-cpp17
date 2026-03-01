@@ -44,7 +44,49 @@ bind改成lambda
 
 ## 深入技术点三: Functor也写成完美转发? 回调的开销.
 
+## 
+面试怎么聊
+数据上说实话，不要编。正确的说法是：
+"在同线程 pingpong echo 场景下，吞吐量与原版 muduo 持平（~200 MiB/s）" —— 证明你的重构没有引入性能回退，这本身就是有价值的。
+"优化点针对跨线程 send 场景" —— 原版 send(Buffer*) 跨线程时做 retrieveAllAsString() 是 O(n) 拷贝（陈硕自己标了 FIXME efficiency!!!），我用 Buffer swap 做到 O(1)。这个优化在 worker 线程池模式下才体现，即 onMessage 中把耗时任务丢到 worker 线程，worker 线程完成后调 conn->send() 跨线程投递。
+lambda 替代 bind —— 编译器更容易内联，避免 std::function 的类型擦除开销。
+完美转发统一 send 接口 —— 原版需要 StringPiece、Buffer*、const void* 等多个重载，我用万能引用模板统一了字符串类 send，右值 string 走 move 零拷贝，const char* 走 string_view 轻量构造。
+面试时重点讲设计思想和对场景的理解，不要硬吹数字。面试官问"性能提升多少"，你说"同场景持平，但跨线程 send 从 O(n) 拷贝优化到 O(1) swap"，这比编一个数字要有说服力得多。
 
+## Benchmark
+
+### 前置依赖
+
+原版 muduo 源码使用了 `boost::any`，需要安装 Boost 头文件：
+
+```bash
+sudo apt-get install -y libboost-dev
+```
+
+### GCC 13+ 编译兼容性
+
+原版 muduo 的 `Date.cc` 在 GCC 13 下会报 `incomplete type 'struct tm'` 错误，
+已在 `benchmark/muduo-origin/muduo/base/Date.cc` 头部添加 `#include <ctime>` 修复。
+
+### 编译与运行
+
+```bash
+cd benchmark
+
+# 编译 (Release -O2)
+bash build.sh
+
+# 快速测试 (~40秒, 单线程)
+bash run_quick_test.sh
+
+# 完整测试 (~4分钟, 单线程)
+bash run_benchmark.sh
+
+# 多线程测试 (1/2/4 线程对比)
+bash run_benchmark.sh --threads "1 2 4"
+```
+
+脚本会自动将 server 和 client 绑定到不同的 CPU 核心组，避免互相争抢。
 
 # ---------------------------------------------------------
 

@@ -100,22 +100,29 @@ build_all() {
 }
 
 # ======================== CPU 绑定策略 ========================
+# 将可用核心对半分: 下半部分给 server, 上半部分给 client, 避免互相争抢
 NUM_CPUS=$(nproc)
+HALF_CPUS=$((NUM_CPUS / 2))
 
 get_taskset_server() {
-    if [ "$NUM_CPUS" -ge 2 ]; then
-        echo "taskset -c 0"
-    else
+    local threads="$1"
+    if [ "$NUM_CPUS" -lt 2 ]; then
         echo ""
+        return
     fi
+    local max_core=$(( threads - 1 ))
+    if [ "$max_core" -ge "$HALF_CPUS" ]; then
+        max_core=$(( HALF_CPUS - 1 ))
+    fi
+    echo "taskset -c 0-${max_core}"
 }
 
 get_taskset_client() {
-    if [ "$NUM_CPUS" -ge 2 ]; then
-        echo "taskset -c 1"
-    else
+    if [ "$NUM_CPUS" -lt 2 ]; then
         echo ""
+        return
     fi
+    echo "taskset -c ${HALF_CPUS}-$((NUM_CPUS - 1))"
 }
 
 # ======================== 工具函数 ========================
@@ -145,7 +152,7 @@ run_one_test() {
     local outfile="$RESULT_DIR/${server_name}_t${threads}_s${sessions}_r${run_id}.txt"
     local taskset_srv taskset_cli
 
-    taskset_srv=$(get_taskset_server)
+    taskset_srv=$(get_taskset_server "$threads")
     taskset_cli=$(get_taskset_client)
 
     wait_port_free
@@ -277,7 +284,7 @@ main() {
 
     local cpu_bind_info="无绑核 (仅 ${NUM_CPUS} 核)"
     if [ "$NUM_CPUS" -ge 2 ]; then
-        cpu_bind_info="server=CPU0, client=CPU1"
+        cpu_bind_info="server=CPU 0~$((HALF_CPUS-1)) (按线程数), client=CPU ${HALF_CPUS}~$((NUM_CPUS-1))"
     fi
 
     echo "============================================================"
