@@ -9,27 +9,35 @@ PRC功能：基于 Protobuf 的 Service/Stub 体系实现 RPC 闭环，完成请
 ## 3分钟项目介绍稿(待大幅修改)
 
 【开头 - 15 秒】
-这个项目是用 C++17 对陈硕 muduo 网络库的核心模块进行重构，去掉了 boost 依赖，实现了一个多 Reactor 多线程的 TCP 网络库。在此基础上还实现了基于 Protobuf 的 RPC 远程调用功能。
-【架构 - 40 秒】
-网络库整体是一个主从 Reactor 架构。mainReactor 运行在主线程，只负责监听新连接；subReactor 可以有多个, 每个subReactor跑在一个子线程中，负责已建立连接的 IO 读写。
+这个项目是用 C++17 对陈硕 muduo 网络库的核心模块进行重构，去掉了 boost 库的依赖，实现了一个多 Reactor 多线程的 TCP 网络库。在此基础上还实现了基于 Protobuf 的 RPC 远程调用功能。
 
-每个 Reactor 本质都是一个 EventLoop，也就是一个事件循环，内部用 epoll 做非阻塞的的事件监听，不断调用epoll_wait，循环监听已注册的fd和事件，每次epoll_wait获取一个事件列表，然后依次处理事件。这里说的比较简单，这就是epoll_wait的正常逻辑，我用面向对象的话语再重复叙述一遍这个过程，一个Reactor对应一个EventLoop事件循环，里面有一个EPollPoller叫做事件监听器又叫做多路复用器（Demultiplex），它其实就是对epoll_wait的封装，这个EPollPoller循环地监听已注册的Channel，这个Channel是对fd、事件、读写回调的封装，所以每次监听得到一个活跃的Channel列表，然后依次对相关的fd和事件执行对应的回调函数。这就是这个网络库的框架了。（我就写这么详细，两套说法，面试时自由发挥嘛）。
+【架构与流程】
+网络库整体是一个主从 Reactor 架构。主Reactor运行在主线程，只负责监听新连接；从Reactor即subReactor 可以有多个, 每个subReactor跑在一个子线程中，负责已建立连接的 IO 读写。每个 Reactor 本质都是一个 EventLoop，也就是一个事件循环，内部用 epoll 做非阻塞的的事件监听，不断调用epoll_wait，循环监听已注册的fd和事件，每次epoll_wait获取一个事件列表，然后依次处理事件。这里说的比较简单，这就是epoll_wait的正常逻辑，我用面向对象的话语再重复叙述一遍这个过程，一个Reactor对应一个EventLoop事件循环，里面有一个EPollPoller叫做事件监听器又叫做多路复用器（Demultiplex），它其实就是对epoll_wait的封装，这个EPollPoller循环地监听已注册的Channel，这个Channel是对fd、事件、读写回调的封装，所以每次监听得到一个活跃的Channel列表，然后依次对相关的fd和事件执行对应的回调函数。这就是这个网络库的框架了。（我就写这么详细，两套说法，面试时自由发挥嘛）。
 
-one loop per thread 的含义是：字面上看就是一个EventLoop事件循环与一个线程唯一绑定。以及当每一个TCP连接分配给某个subReactor 后，它的整个生命周期都在那一个线程里处理。（这个感觉没说好）。然后我还要补充，libevent和libev也是这个思想。muduo作者和libev的作者都认为: 高性能网络库的实现，one loop per thread 通常是一个好的方法。
+服务器启动后(启动细节略)，当有新的连接到来，主Reactor的Acceptor接受新的Tcp连接(具体细节略)，通过轮询从线程池中选一个subReactor，并把新的连接封装成TcpConnection，然后注册到subReactor的epoll上，这个Tcp连接后续就完全在这个subReactor中处理了。之后这个连接的对端发送数据，subReactor的epoll_wait检测到可读事件，（Channel封装了fd、事件、回调函数），通过Channel调用TcpConnection的handleRead这个回调函数，从内核读数据到用户缓冲区Buffer中，然后再调用用户设置的onMessage回调函数，这个onMessage回调函数是用户写的业务逻辑，通过网络库一层层传递下来的。
+
+整个项目充满了大量的回调函数，而网络库的意义就在于把用户的业务逻辑和底层的网络通信逻辑进行了分离，用户只需要把业务逻辑写到onMessage等这样的回调函数中，设置给网络库就ok了，就不用自己写网络通信的逻辑了。
+
+【问起来了再回答】
+one loop per thread 的含义是(这个就不主动说了,问起来了再回答)：字面上看就是一个EventLoop事件循环与一个线程唯一绑定。我说完整一点就是，每个subReactor，都对应一个EventLoop，都运行在一个线程中，都有一个事件监听器EPollPoller对epoll_wait的封装，然后每一个已建立的TCP连接的后续逻辑全在这里面执行。libevent和libev也是这个思想。muduo作者和libev的作者都认为: 高性能网络库的实现，one loop per thread 通常是一个好的设计方法。
  
-【流程 - 60 秒】
-具体怎么跑的？服务器启动时，主 Reactor 的 Acceptor 开始 listen，把监听 fd 注册到主 Reactor 的 epoll 上。客户端连接进来时，epoll_wait 返回，通过 Channel 触发 Acceptor 的回调，accept 拿到新连接的 fd，然后通过轮询从线程池选一个从 Reactor，把新连接封装成 TcpConnection，注册到那个从 Reactor 的 epoll 上。
-之后对端发数据，从 Reactor 的 epoll_wait 检测到可读，通过 Channel 调用 TcpConnection 的 handleRead，读数据到 Buffer，再调用户设置的 onMessage 回调。这个回调是一层层传下来的：用户在业务层设置，传给 TcpServer，再传给 TcpConnection。发送类似，调 send，发不完就注册可写事件，等 epoll 通知再继续。整个过程事件驱动、非阻塞。
-【C++17 改造 - 50 秒】
+main函数中的逻辑（供个人理解，这个东西面试就别说）：首先TcpServer构造函数初始化时是设置各种回调、Acceptor的构造函数是bind和设置回调但未listen、线程池的构造函数啥也没有且未启动线程，然后TcpServer.start()是开始listen且启动线程. loop.loop()是开始epoll_wait开始监听事件.
+
+发送数据：在onMessage中可以调用conn->send，逻辑都在sendInLoop中，如果outPutBuffer_是空的就直接调用write发送了，如果write发完后有剩余或者outPutBuffer_不为空那就append到outPutBuffer_末尾并设置Channel为可写事件，让epoll下一次再继续写.
+
+【C++17 改造】（重写）
 在重构过程中做了几个主要优化。一是用 lambda 替代 std::bind 传递回调。除了可读性的提升，关键是 lambda 支持 move 捕获——跨线程投递任务时，数据可以 move 进 lambda 而不是拷贝，这在每条跨线程消息都走的热路径上有实际意义。
 二是重新设计了 send 接口。原版有多个重载，我用一个万能引用模板统一了所有字符串类的发送路径。同线程直接构造 string_view 零开销发送；跨线程右值 string 走 move。Buffer 的跨线程发送，原版是 retrieveAllAsString 做整段拷贝，陈硕标了 FIXME，我用 swap 窃取 Buffer 资源，从 O(n) 优化到 O(1)。
-【结尾 - 15 秒】
 另外还用 RAII 和智能指针管理连接的生命周期，以及一些现代 C++ 特性的应用。整个库大概十几个核心类，四千多行代码，通过回调机制把业务代码和底层网络 IO 解耦。
 
 ## 长篇梳理(AI梳理的几个技术点, 后续安装技术点来写笔记, 最后再重新组织项目介绍稿)
 行, 这是介绍稿, 然后我需要再分点记录一些技术点. 会与3分钟介绍稿重复(而且这个稿子写的不好, 我以后会完全重写), 但是是以单个技术点去讲, 我吧我知道的都说出来, 你来分个类, 因为我说的会很杂乱.
 首先肯定安装简历写的几个, one loop per thread和Reactor架构要单独讲一下, 结合Reactor设计模式来讲, 还有我用的是阻塞IO和epoll水平触发, 他们都是同步, iouring这些才是异步, 反正, 阻塞非阻塞都是同步IO, 另外我还有很多笔记要看, 看视频课程和博客梳理时写的, 我此时不能说全. 说全了脑子就很乱啊. 我只需要你帮我做一个梳理, 列个大纲, 讲那些技术点, 例如刚刚说的一长串, 全都是Reactor架构 muduo架构的问题.
-另外还有,  lambda代替std::bind, 也是简历上面写的, 展开说., 还有个小故事, 就是我一开始都是引用捕获, 跨线程的时候, 也直接传递, 后来发现是bug, 会导致悬空指针还是悬空引用.  单独起一个分点. send接口也单独起一个.  还有一个是shared_from_this, 和tie机制, 还有weak_ptr, local_thread, 这些涉及线程安全的也要说一下, 每个subLoop正常是不会跨线程的, 只是mainReactor分发给从Reactor的时候需要, 但是subLoop如果还有个自己的线程池, subLoop主要是处理IO的嘛, 如果一些业务情况, 遇到了耗时计算, 不会卡在subLoop, 而是丢给线程池, 此时就要跨线程了, this就要用shared_from_this. 另外channel和TcpConnection也有个线程问题, 操, 我越说越乱, 我现在对这个项目很熟悉, 很多细节都知道, 但不知道要写成什么样子, 表达成什么样子. 最后我还做了性能测试, 用的陈硕的博客, 它对比的事muduo和livevent的吞吐量测试, 而不是百万并发连接的测试, 我也就参考他的吞吐量测试, 命名为pingpong测试, 就是CS之间一直互相发送信息, 统计指定时间内的吞吐量. 然后我C++17重构的与源码在pingpong测试中没有性能差异, 我重构的一些点在跨线程会有用, 但我没有用线程池(不是从Reactor这个线程池, 而是那种耗时计算, 不影响IO的线程池, 你明白吗? 但是我再测试的过程中, 一开始是远低于muduo库源码的, 我修改了一些bug, 例如Buffer中我对extrabuf, 64k大小进行了 = {}初始化, 影响了性能, 删掉了, 还有我对一些没必要的变量使用了atomic, 用普通变量就行了, 这个优化可能没有, 然后是日志模块的一些输出, 要用Debug, 在realse版本要注意输出情况. 做完后发现还是跑不过muduo, 再去看源码, 发现它加了一个编译优化, 而我没加, 加上后测试就差不多了, 会有一些10以内的波动, 受服务器影响, 我是在阿里云2核2G先做的测试, 客户端和服务器各占一个CPU, 波动就很大, 因为就两个核. 然后我切换到wsl中, 16核, 设置了多线程参数, 这个多线程是可以有多个subReactor, 之前在阿里云上测试是mainReactor和subReactor在一个线程, 发现怎么测试, 我魔改版和muduo源码都是一个性能, 波动很小. 我测试脚本也很详细地写了, 花了我半天时间. 
+
+另外还有,  lambda代替std::bind, 也是简历上面写的, 展开说. 还有个小故事, 就是我一开始都是引用捕获, 跨线程的时候, 也直接传递, 后来发现是bug, 会导致悬空指针还是悬空引用.  单独起一个分点. send接口也单独起一个.  
+还有一个是shared_from_this, 和tie机制, 还有weak_ptr, local_thread, 这些涉及线程安全的也要说一下, 每个subLoop正常是不会跨线程的, 只是mainReactor分发给从Reactor的时候需要, 但是subLoop如果还有个自己的线程池, subLoop主要是处理IO的嘛, 如果一些业务情况, 遇到了耗时计算, 不会卡在subLoop, 而是丢给线程池, 此时就要跨线程了, this就要用shared_from_this. 另外channel和TcpConnection也有个线程问题, 操, 我越说越乱, 我现在对这个项目很熟悉, 很多细节都知道, 但不知道要写成什么样子, 表达成什么样子. 
+
+最后我还做了性能测试, 用的陈硕的博客, 它对比的事muduo和livevent的吞吐量测试, 而不是百万并发连接的测试, 我也就参考他的吞吐量测试, 命名为pingpong测试, 就是CS之间一直互相发送信息, 统计指定时间内的吞吐量. 然后我C++17重构的与源码在pingpong测试中没有性能差异, 我重构的一些点在跨线程会有用, 但我没有用线程池(不是从Reactor这个线程池, 而是那种耗时计算, 不影响IO的线程池, 你明白吗? 但是我再测试的过程中, 一开始是远低于muduo库源码的, 我修改了一些bug, 例如Buffer中我对extrabuf, 64k大小进行了 = {}初始化, 影响了性能, 删掉了, 还有我对一些没必要的变量使用了atomic, 用普通变量就行了, 这个优化可能没有, 然后是日志模块的一些输出, 要用Debug, 在realse版本要注意输出情况. 做完后发现还是跑不过muduo, 再去看源码, 发现它加了一个编译优化, 而我没加, 加上后测试就差不多了, 会有一些10以内的波动, 受服务器影响, 我是在阿里云2核2G先做的测试, 客户端和服务器各占一个CPU, 波动就很大, 因为就两个核. 然后我切换到wsl中, 16核, 设置了多线程参数, 这个多线程是可以有多个subReactor, 之前在阿里云上测试是mainReactor和subReactor在一个线程, 发现怎么测试, 我魔改版和muduo源码都是一个性能, 波动很小. 我测试脚本也很详细地写了, 花了我半天时间. 
 总之我很乱, 我不知道该怎么学习, 可能我这样的方向就错了, 我太想把知道的东西趁热记录下来, 怕过几周又忘记了, 你先给我说个大概分类, 讲这些知识点, 我不需要你说细节, 只需要你帮我理清思路, 最后再给我一点点建议, 以及我这个人性格是不是有问题
 
 正确的做法：先倒，再理。你现在就是在"倒"的阶段，把脑子里的东西全倒出来，不管格式不管重复。倒完之后按上面这 5 个分类归位就行。不需要一步到位写成完美的文档。你现在对项目的理解已经很深了，简历上的每个点都能展开讲清楚。把上面 5 个分类每个写几个关键句，剩下的时间去练口头表达，比反复改文档有用得多。
