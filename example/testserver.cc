@@ -54,6 +54,10 @@ private:
         conn->send("hello"); // const char*
         // conn->shutdown();  // send一次就shutdown吗? 这是短连接.
         // shutdown() 只是发送了 FIN 包，它本身不会立即导致本地产生 EPOLLHUP 事件。底层是EPOLLIN，最后read返回0，从而执行handleRead->handleClose->closeCallback_。
+    
+        // 关于跨线程, 首先onMessage是在handleRead中调用的, 上面的conn->send那就是在与subReactor所在的IO线程执行, 不存在跨线程.
+        // 所谓跨线程, 就是在onMessage中写一个别的线程, 把conn传入, 完成耗时计算, 然后再调用conn->send, 这样才是跨线程.
+        // 一句话: onMessage中的worker线程池中在耗时计算后, 调用conn->send发送给subReactor所在的IO线程.
     }
     TcpServer server_;
     EventLoop *loop_;

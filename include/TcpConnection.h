@@ -68,11 +68,9 @@ public:
                 // 重点来了！这行代码是性能分水岭：
                 // 1. 如果 message 是右值 string (std::move传进来的)，这里触发 Move 构造，0 拷贝！
                 // 2. 如果 message 是左值 string 或 const char*，这里触发 Copy 构造/分配。这是跨线程保证内存安全的必须代价。
-                std::string msg_to_pass(std::forward<StringLike>(message));
-
-                auto ptr = shared_from_this(); // 保护连接对象的生命周期
-                loop_->runInLoop([ptr, msg = std::move(msg_to_pass)]() {
-                    ptr->sendInLoop(msg.data(), msg.size());
+                loop_->runInLoop([self = shared_from_this(),
+                                    msg = std::string(std::forward<StringLike>(message))]() {
+                    self->sendInLoop(msg.data(), msg.size());
                 });
             }
         }
